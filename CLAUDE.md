@@ -20,11 +20,15 @@ picker, four-digit PIN with lockout, the once-a-day van check (van, odometer,
 checklist), and the run screen with Done / Issue / undo, an offline outbox and
 finish-run.
 
-**Admin side — built, only the login is verified.** Today's board, Customers
-(search, edit, day assignment) and Vans (register with add/edit/retire, plus
-the "Who was driving?" lookup). Everything past the login is UNTESTED because
-no admin account existed when it was written — the first person to sign in
-should expect rough edges, particularly in the PostgREST embeds.
+**Admin side — five screens, query shapes validated, interactions untested.**
+Today's board, Runs (create a run, Mon–Sat grid, drag customers between days),
+Customers (search, edit, read-only "appears on"), Drivers (add, PIN set/reset,
+lockout clear, sign out devices) and Vans (register plus "Who was driving?").
+
+Every PostgREST query shape has been checked against the live API and every
+table join resolves. What has **not** been exercised is the interaction layer —
+drag-and-drop reordering, the add-stop modal, PIN setting — because they need a
+signed-in session. Expect rough edges there first.
 
 **Adding an office user:** they sign up at `/admin/` with a
 `@hudsongroup.com.au` address. A trigger (`grant_admin_on_confirm`, migration
@@ -46,9 +50,10 @@ that domain gets nothing.
 the driver RPCs. The domain restriction only ever affects office logins and
 cannot lock a driver out.
 
-**Still to build:** the day editor (reassign a stop, add ad-hoc, cancel a day),
-the weekly pattern grid with drag-and-drop, drivers admin with PIN reset, the
-holiday calendar, the Excel import, and reports.
+**Still to build:** the day editor (reassign one stop to another driver, add an
+ad-hoc stop, cancel a day) — this is the highest-value remaining piece, because
+doubling up and ad-hoc stops are the daily reality. Then the holiday calendar,
+the Excel import of the 79 customers, and reports.
 
 Seeded drivers use placeholder PINs (Kemu 1111, Darren 2222, Sione 3333, Paulo
 4444). Reset them from the admin page once it exists — the house convention is
