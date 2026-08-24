@@ -56,10 +56,8 @@ driver_today, driver_mark_loaded, admin_create_driver, list_drivers_for_picker)
 live only in the database and in git history. Before any fresh deploy, dump the
 current function definitions rather than trusting the migration files alone.
 
-**Still to build:** the day editor (reassign one stop to another driver, add an
-ad-hoc stop for today only, cancel one run rather than the whole day) — the
-highest-value remaining piece, because doubling up and ad-hoc stops are the
-daily reality. Then reports.
+**Still to build:** reports (stop-level CSV export, completion by driver,
+customers with repeated issues). Everything else in the original scope is done.
 
 Seeded drivers use placeholder PINs (Kemu 1111, Darren 2222, Sione 3333, Paulo
 4444). Reset them from the admin page once it exists — the house convention is

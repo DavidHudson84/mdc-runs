@@ -15,7 +15,7 @@
   .cal .dow{font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.09em;
     text-transform:uppercase; color:var(--ink-3); padding:9px 10px; background:var(--surface-2);
     border-bottom:1.5px solid var(--line); text-align:left}
-  .cell{min-height:96px; border-right:1.5px solid var(--line); border-bottom:1.5px solid var(--line);
+  .cell{min-height:92px; border-right:1.5px solid var(--line); border-bottom:1.5px solid var(--line);
     padding:8px 9px; background:none; text-align:left; display:flex; flex-direction:column; gap:5px}
   .cell:nth-child(7n+7){border-right:0}
   .cell:hover{background:var(--surface-2)}
@@ -37,27 +37,54 @@
   .navbtn{padding:7px 13px; border:1.5px solid var(--line-2); border-radius:var(--r);
     font-family:"Archivo",sans-serif; font-size:13px; font-weight:700}
   .navbtn:hover{border-color:var(--accent); color:var(--accent)}
-  .dayrun{border-bottom:1.5px solid var(--line); padding:14px 20px}
+  .dayrun{border-bottom:1.5px solid var(--line)}
   .dayrun:last-child{border-bottom:0}
-  .dayrun h4{font-family:"Archivo",sans-serif; font-size:15.5px; font-weight:700}
-  .dayrun .meta{font-size:13px; color:var(--ink-2); margin:2px 0 9px}
-  .slist{display:flex; flex-direction:column; gap:0}
-  .srow{display:grid; grid-template-columns:28px 1fr auto auto; gap:10px; align-items:baseline;
-    padding:6px 0; border-top:1px dashed var(--line); font-size:14px}
+  .runhdr{display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center;
+    padding:14px 20px; background:var(--surface-2); border-bottom:1.5px solid var(--line)}
+  .runhdr h4{font-family:"Archivo",sans-serif; font-size:15.5px; font-weight:700}
+  .runhdr .meta{font-size:13px; color:var(--ink-2)}
+  .runhdr select{padding:7px 10px; border:1.5px solid var(--line-2); border-radius:var(--r);
+    background:var(--surface); font-size:14px}
+  .runhdr .sp{margin-left:auto; display:flex; gap:8px}
+  .srow{display:grid; grid-template-columns:26px 1fr auto auto auto; gap:10px; align-items:center;
+    padding:9px 20px; border-bottom:1px dashed var(--line); font-size:14.5px}
+  .srow:last-child{border-bottom:0}
+  .srow.skipped{opacity:.45}
   .srow .n{font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:700; color:var(--ink-3)}
+  .srow .who{font-size:12.5px}
+  .srow select{padding:5px 8px; border:1.5px solid var(--line-2); border-radius:4px;
+    background:var(--surface); font-size:12.5px; max-width:130px}
   .srow .st{font-family:"Archivo",sans-serif; font-size:10px; font-weight:700; letter-spacing:.06em;
-    text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1.5px solid}
+    text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1.5px solid; white-space:nowrap}
   .st.done{color:var(--done); background:var(--done-soft); border-color:var(--done)}
   .st.issue{color:var(--issue); background:var(--issue-soft); border-color:var(--issue-line)}
   .st.pending{color:var(--ink-3); background:var(--surface-3); border-color:var(--line-2)}
+  .st.skipped{color:var(--ink-3); background:var(--surface-3); border-color:var(--line-2)}
   .st.marker{color:var(--accent); background:var(--accent-soft); border-color:var(--accent-line)}
-  .srow .t{font-family:"Archivo",sans-serif; font-size:11.5px; color:var(--ink-3); white-space:nowrap}
+  .srow .tools{display:flex; gap:3px}
+  .srow .tool{width:24px; height:24px; border-radius:4px; border:1.5px solid var(--line-2);
+    display:grid; place-items:center; font-size:12px; color:var(--ink-3)}
+  .srow .tool:hover{border-color:var(--accent); color:var(--accent)}
+  .adhoc{padding:12px 20px; background:var(--surface-2); display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  .adhoc .oc{background:var(--surface); border:1.5px solid var(--line-2); border-radius:20px;
+    padding:6px 12px; font-size:12.5px; font-weight:600}
+  .adhoc .oc:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
   .holidaybar{display:flex; flex-wrap:wrap; gap:9px; align-items:end; padding:14px 20px;
     background:var(--surface-2); border-bottom:1.5px solid var(--line)}
   .holidaybar label{display:block; font-family:"Archivo",sans-serif; font-size:10px; font-weight:700;
     letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:4px}
   .holidaybar input, .holidaybar select{padding:9px 11px; border:1.5px solid var(--line-2);
     border-radius:var(--r); background:var(--surface); font-size:14.5px}
+  .modal{position:fixed; inset:0; background:rgba(8,14,20,.5); display:grid; place-items:center; z-index:20; padding:20px}
+  .card{background:var(--surface); border-radius:var(--r); box-shadow:var(--shadow); width:100%; max-width:460px; padding:22px}
+  .card h3{font-size:18px; font-weight:700; margin-bottom:4px}
+  .card input{width:100%; padding:11px; border:1.5px solid var(--line-2); border-radius:var(--r);
+    background:var(--surface-2); font-size:15px; margin-top:10px}
+  .picks{max-height:210px; overflow-y:auto; border:1.5px solid var(--line); border-radius:var(--r); margin-top:8px}
+  .pick{display:block; width:100%; text-align:left; padding:9px 12px; border-bottom:1.5px solid var(--line); background:none; font-size:14px}
+  .pick:hover{background:var(--accent-soft)}
+  .pick small{display:block; color:var(--ink-3)}
+  .cardacts{display:grid; grid-template-columns:1fr 1.4fr; gap:9px; margin-top:16px}
 </style>
 </head>
 <body class="admin">
@@ -71,23 +98,22 @@ const root = document.getElementById('root');
 const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
 
-let routes = [], business = null;
-let month = todayISO().slice(0, 7);          // YYYY-MM
+let business = null, routes = [], drivers = [], customers = [], onCall = [];
+let month = todayISO().slice(0, 7);
 let days = [], exceptions = [];
-let open = null;                              // expanded date
-let dayData = null, err = '', busy = false;
-let hol = { label: '', scope: '' };
+let open = null, dayData = null, err = '', busy = false;
+let hol = { label:'', scope:'' };
+let modal = null;                                  // { runDayId, q }
 
 function renderLogin() { mountLogin(root, boot); }
 
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const monthName = m => new Date(m + '-01T00:00:00')
-  .toLocaleDateString('en-AU', { month:'long', year:'numeric' });
+const monthName = m => new Date(m + '-01T00:00:00').toLocaleDateString('en-AU', { month:'long', year:'numeric' });
 
 function gridDates() {
   const first = new Date(month + '-01T00:00:00');
   const start = new Date(first);
-  start.setDate(1 - ((first.getDay() + 6) % 7));           // back to Monday
+  start.setDate(1 - ((first.getDay() + 6) % 7));
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start); d.setDate(start.getDate() + i); return d;
   });
@@ -97,60 +123,82 @@ function gridDates() {
 
 async function loadMonth() {
   const all = gridDates();
-  const from = iso(all[0]), to = iso(all[41]);
-  days = await db(`run_days?service_date=gte.${from}&service_date=lte.${to}` +
-    `&select=id,service_date,status,route_id,routes(name),drivers(display_name),` +
-    `run_stops(status,tickable)&order=service_date.asc`);
-  exceptions = await db(`calendar_exceptions?exception_date=gte.${from}&exception_date=lte.${to}` +
-    `&select=id,exception_date,route_id,action,label`);
+  days = await db(`run_days?service_date=gte.${iso(all[0])}&service_date=lte.${iso(all[41])}` +
+    `&select=id,service_date,status,route_id,routes(name),run_stops(status,tickable)&order=service_date.asc`);
+  exceptions = await db(`calendar_exceptions?exception_date=gte.${iso(all[0])}` +
+    `&exception_date=lte.${iso(all[41])}&select=id,exception_date,route_id,action,label`);
 }
 
 function cellHTML(d) {
   const key = iso(d);
-  const outside = key.slice(0, 7) !== month;
-  const ex = exceptions.filter(e => e.exception_date === key);
-  const noRun = ex.find(e => e.action === 'no_run');
+  const outside = key.slice(0,7) !== month;
+  const noRun = exceptions.find(e => e.exception_date === key && e.action === 'no_run');
   const mine = days.filter(x => x.service_date === key);
-
-  return `<button class="cell ${outside ? 'out' : ''} ${key === todayISO() ? 'today' : ''}"
+  return `<button class="cell ${outside?'out':''} ${key===todayISO()?'today':''}"
                   data-day="${key}" aria-current="${open === key}">
     <span class="dnum">${d.getDate()}</span>
     ${noRun ? `<span class="norun">${esc(noRun.label || 'no run')}</span>` : ''}
-    <span class="runs">
-      ${mine.map(r => {
-        const s = (r.run_stops || []).filter(x => x.tickable);
-        const settled = s.filter(x => x.status === 'done' || x.status === 'issue').length;
-        const cls = r.status === 'cancelled' ? 'cx'
-                  : (s.length && settled === s.length) ? 'full'
-                  : settled ? 'part' : '';
-        return `<span class="rrow"><span class="dot ${cls}"></span>${esc(r.routes ? r.routes.name : '')}</span>`;
-      }).join('')}
-    </span>
+    <span class="runs">${mine.map(r => {
+      const s = (r.run_stops || []).filter(x => x.tickable && x.status !== 'skipped');
+      const settled = s.filter(x => x.status === 'done' || x.status === 'issue').length;
+      const cls = r.status === 'cancelled' ? 'cx' : (s.length && settled === s.length) ? 'full' : settled ? 'part' : '';
+      return `<span class="rrow"><span class="dot ${cls}"></span>${esc(r.routes ? r.routes.name : '')}</span>`;
+    }).join('')}</span>
   </button>`;
 }
 
-/* ── one day ─────────────────────────────────────────────────────────────── */
+/* ── one day, editable ───────────────────────────────────────────────────── */
 
 async function loadDay(date) {
-  // Generating on open is what makes a future day inspectable at all: it is
-  // idempotent and additive, so looking is never destructive.
-  for (const r of routes) { try { await rpcAdmin('ensure_run_day', { p_route_id: r.id, p_service_date: date }); } catch {} }
+  for (const r of routes) {
+    try { await rpcAdmin('ensure_run_day', { p_route_id: r.id, p_service_date: date }); } catch {}
+  }
   dayData = await db(`run_days?service_date=eq.${date}` +
-    `&select=id,status,cancel_reason,started_at,completed_at,route_id,` +
-    `routes(name,start_time),drivers(display_name),` +
-    `run_stops(id,seq,kind,status,tickable,customer_name,label,loaded_at,marked_at,` +
-    `issue_reason,issue_note,scheduled_time,customers(name))&order=service_date.asc`);
+    `&select=id,status,cancel_reason,driver_id,route_id,routes(name,start_time),` +
+    `run_stops(id,seq,kind,status,tickable,origin,customer_id,customer_name,label,loaded_at,` +
+    `marked_at,issue_reason,issue_note,scheduled_time,assigned_driver_id,skipped_reason,` +
+    `customers(name,suburb))&order=service_date.asc`);
 }
+
+function stopRow(r, s) {
+  const name = s.customer_name || (s.customers && s.customers.name) || s.label || '';
+  const settled = s.status === 'done' || s.status === 'issue';
+  const cls = s.status === 'skipped' ? 'skipped' : !s.tickable ? 'marker' : s.status;
+  const label = s.status === 'issue' ? (REASONS[s.issue_reason] || 'issue')
+              : !s.tickable ? 'note' : s.status;
+  return `<div class="srow ${s.status === 'skipped' ? 'skipped' : ''}">
+    <span class="n num">${s.seq}</span>
+    <span>${esc(name)}${s.origin === 'adhoc' ? ' <span class="badge">added today</span>' : ''}
+      ${s.issue_note ? `<br><small style="color:var(--issue)">&ldquo;${esc(s.issue_note)}&rdquo;</small>` : ''}
+      ${s.skipped_reason ? `<br><small>${esc(s.skipped_reason)}</small>` : ''}</span>
+    <span class="who">${s.tickable && s.status !== 'skipped' ? `
+      <select data-assign="${s.id}" title="Who does this stop">
+        <option value="">${esc(driverName(r.driver_id) || 'run driver')}</option>
+        ${drivers.filter(d => d.is_active).map(d =>
+          `<option value="${d.id}" ${s.assigned_driver_id === d.id ? 'selected' : ''}>${esc(d.display_name)}</option>`).join('')}
+      </select>` : ''}</span>
+    <span class="st ${cls}">${esc(label)}</span>
+    <span class="tools">
+      ${s.status !== 'skipped' && !settled ? `
+        <button class="tool" data-up="${s.id}" title="Move up">&uarr;</button>
+        <button class="tool" data-down="${s.id}" title="Move down">&darr;</button>
+        <button class="tool" data-skip="${s.id}" title="Take off today">&times;</button>` : ''}
+      ${s.status === 'skipped' ? `<button class="tool" data-unskip="${s.id}" title="Put back">&#8630;</button>` : ''}
+      ${settled ? `<span class="who">${clock(s.marked_at)}</span>` : ''}
+    </span>
+  </div>`;
+}
+
+const driverName = id => (drivers.find(d => d.id === id) || {}).display_name || '';
 
 function dayHTML() {
   if (!open) return '';
-  const ex = exceptions.filter(e => e.exception_date === open);
-  const noRun = ex.find(e => e.action === 'no_run');
+  const noRun = exceptions.find(e => e.exception_date === open && e.action === 'no_run');
 
   return `<div class="panel">
     <header>
       <div><h2>${longDate(open)}</h2>
-        <span class="when">One day on its own. Generating it is harmless — it only ever adds.</span></div>
+        <span class="when">Changes here affect this day only. The weekly pattern is untouched.</span></div>
       <button class="navbtn" id="closeday">Close</button>
     </header>
 
@@ -162,9 +210,8 @@ function dayHTML() {
         : `<div><label for="hlabel">Mark this day as no run</label>
              <input id="hlabel" placeholder="Melbourne Cup Day" value="${esc(hol.label)}"></div>
            <div><label for="hscope">Which runs</label>
-             <select id="hscope">
-               <option value="">Every run</option>
-               ${routes.map(r => `<option value="${r.id}" ${hol.scope === r.id ? 'selected' : ''}>${esc(r.name)} only</option>`).join('')}
+             <select id="hscope"><option value="">Every run</option>
+               ${routes.map(r => `<option value="${r.id}" ${hol.scope===r.id?'selected':''}>${esc(r.name)} only</option>`).join('')}
              </select></div>
            <button class="btn" id="sethol">Mark no run</button>`}
     </div>
@@ -172,70 +219,134 @@ function dayHTML() {
 
     ${(dayData || []).length ? dayData.map(r => {
       const stops = (r.run_stops || []).slice().sort((a,b) => a.seq - b.seq);
-      const tick = stops.filter(s => s.tickable);
-      const done = tick.filter(s => s.status === 'done').length;
-      const issue = tick.filter(s => s.status === 'issue').length;
-      const loaded = tick.filter(s => s.loaded_at).length;
+      const live = stops.filter(s => s.status !== 'skipped' && s.tickable);
+      const done = live.filter(s => s.status === 'done').length;
+      const issue = live.filter(s => s.status === 'issue').length;
       return `<div class="dayrun">
-        <h4>${esc(r.routes ? r.routes.name : 'Run')}</h4>
-        <p class="meta">${esc(r.drivers ? r.drivers.display_name : 'No driver')}${
-          r.routes && r.routes.start_time ? ' &middot; ' + hhmm(r.routes.start_time) + ' start' : ''}
-          &middot; ${done} done, ${issue} issue, ${tick.length - done - issue} to go
-          ${loaded ? ' &middot; ' + loaded + ' loaded' : ''}
-          ${r.status === 'cancelled' ? ' &middot; <b>cancelled</b>' : ''}</p>
-        <div class="slist">
-          ${stops.map(s => {
-            const cls = !s.tickable ? 'marker' : s.status;
-            const label = !s.tickable ? 'note' : s.status;
-            return `<div class="srow">
-              <span class="n num">${s.seq}</span>
-              <span>${esc(s.customer_name || (s.customers && s.customers.name) || s.label || '')}
-                ${s.issue_note ? `<br><small style="color:var(--issue)">&ldquo;${esc(s.issue_note)}&rdquo;</small>` : ''}</span>
-              <span class="st ${cls}">${esc(s.status === 'issue' ? (REASONS[s.issue_reason] || 'issue') : label)}</span>
-              <span class="t">${s.loaded_at ? 'L ' + clock(s.loaded_at) + ' ' : ''}${
-                s.marked_at ? clock(s.marked_at) : (s.scheduled_time ? hhmm(s.scheduled_time) : '')}</span>
-            </div>`;
-          }).join('') || '<div class="empty" style="padding:14px">No stops on this run today.</div>'}
+        <div class="runhdr">
+          <h4>${esc(r.routes ? r.routes.name : 'Run')}</h4>
+          <select data-rundriver="${r.id}" title="Who drives this run today">
+            <option value="">Nobody assigned</option>
+            ${drivers.filter(d => d.is_active).map(d =>
+              `<option value="${d.id}" ${r.driver_id === d.id ? 'selected' : ''}>${esc(d.display_name)}</option>`).join('')}
+          </select>
+          <span class="meta">${r.routes && r.routes.start_time ? hhmm(r.routes.start_time) + ' start &middot; ' : ''}${done} done, ${issue} issue, ${live.length-done-issue} to go
+            ${r.status === 'cancelled' ? ' &middot; <b style="color:var(--issue)">cancelled</b>' : ''}</span>
+          <span class="sp">
+            ${r.status === 'cancelled'
+              ? `<button class="navbtn" data-uncancel="${r.id}">Put this run back on</button>`
+              : `<button class="navbtn" data-cancel="${r.id}">Cancel this run today</button>`}
+          </span>
+        </div>
+        ${stops.length ? stops.map(s => stopRow(r, s)).join('')
+                       : '<div class="empty" style="padding:16px">No stops on this run today.</div>'}
+        <div class="adhoc">
+          <button class="btn" data-add="${r.id}">+ Add a stop for today only</button>
+          ${onCall.length ? `<span class="when">On call:</span>` : ''}
+          ${onCall.slice(0, 8).map(c =>
+            `<button class="oc" data-oc="${r.id}|${c.id}">+ ${esc(c.name)}</button>`).join('')}
         </div>
       </div>`;
     }).join('') : `<div class="empty">Nothing runs on this day.</div>`}
   </div>`;
 }
 
-/* ── holidays ────────────────────────────────────────────────────────────── */
+/* ── day actions ─────────────────────────────────────────────────────────── */
 
-async function setHoliday() {
+async function act(fn) {
   if (busy) return;
   busy = true; err = '';
-  try {
+  try { await fn(); await loadDay(open); await loadMonth(); }
+  catch (e) { err = e.message; }
+  busy = false; render();
+}
+
+const setRunDriver = (id, v) => act(() =>
+  db(`run_days?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ driver_id: v || null }) }));
+
+// Doubling up: a per-stop field, never re-parenting rows between run days.
+const setStopDriver = (id, v) => act(() =>
+  db(`run_stops?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ assigned_driver_id: v || null }) }));
+
+const cancelRun = (id, on) => act(() =>
+  db(`run_days?id=eq.${id}`, { method:'PATCH', body: JSON.stringify(
+    on ? { status:'cancelled', cancel_reason:'Cancelled by the office' }
+       : { status:'planned', cancel_reason:null }) }));
+
+// Removing a stop from one day is a SKIP, never a delete: a deleted
+// template-sourced row would be resurrected by the next generation.
+function skipStop(id) {
+  const why = prompt('Why is this stop coming off today? (optional)') ?? '';
+  act(() => db(`run_stops?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({
+    status:'skipped', skipped_reason: why.trim() || 'Taken off by the office' }) }));
+}
+const unskipStop = id => act(() =>
+  db(`run_stops?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ status:'pending', skipped_reason:null }) }));
+
+function moveStop(id, dir) {
+  const run = dayData.find(r => (r.run_stops || []).some(s => s.id === id));
+  const list = run.run_stops.filter(s => s.status !== 'skipped').sort((a,b) => a.seq - b.seq);
+  const i = list.findIndex(s => s.id === id);
+  const j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  act(async () => {
+    for (let k = 0; k < list.length; k++) {
+      const want = (k + 1) * 10;
+      if (list[k].seq !== want) {
+        await db(`run_stops?id=eq.${list[k].id}`, { method:'PATCH', body: JSON.stringify({ seq: want }) });
+      }
+    }
+  });
+}
+
+function addAdhoc(runDayId, customerId) {
+  const run = dayData.find(r => r.id === runDayId);
+  const seq = (Math.max(0, ...(run.run_stops || []).map(s => s.seq)) + 10);
+  return act(() => db('run_stops', { method:'POST', body: JSON.stringify({
+    business_id: business.id, run_day_id: runDayId, customer_id: customerId,
+    kind:'customer', tickable:true, origin:'adhoc', seq, status:'pending'
+  })}));
+}
+
+/* ── holidays ────────────────────────────────────────────────────────────── */
+
+function setHoliday() {
+  return act(async () => {
     await db('calendar_exceptions', { method:'POST', body: JSON.stringify({
       business_id: business.id, exception_date: open,
-      route_id: hol.scope || null, action: 'no_run',
-      label: hol.label.trim() || null
-    })});
-    // any day already generated for that date is cancelled to match
+      route_id: hol.scope || null, action:'no_run', label: hol.label.trim() || null }) });
     const scope = hol.scope ? `&route_id=eq.${hol.scope}` : '';
     await db(`run_days?service_date=eq.${open}${scope}`, { method:'PATCH',
       body: JSON.stringify({ status:'cancelled', cancel_reason: hol.label.trim() || 'No run' }) });
     hol = { label:'', scope:'' };
-    await loadMonth(); await loadDay(open);
-  } catch (e) {
-    err = /duplicate key/.test(e.message)
-      ? 'That day is already marked.' : e.message;
-  }
-  busy = false; render();
+  });
 }
-
-async function clearHoliday() {
-  if (busy) return;
-  busy = true; err = '';
-  try {
+function clearHoliday() {
+  return act(async () => {
     await db(`calendar_exceptions?exception_date=eq.${open}`, { method:'DELETE' });
     await db(`run_days?service_date=eq.${open}&status=eq.cancelled`, { method:'PATCH',
-      body: JSON.stringify({ status:'planned', cancel_reason: null }) });
-    await loadMonth(); await loadDay(open);
-  } catch (e) { err = e.message; }
-  busy = false; render();
+      body: JSON.stringify({ status:'planned', cancel_reason:null }) });
+  });
+}
+
+/* ── add-stop picker ─────────────────────────────────────────────────────── */
+
+function modalHTML() {
+  if (!modal) return '';
+  const q = (modal.q || '').toLowerCase();
+  const hits = customers.filter(c => (c.name + ' ' + (c.suburb || '')).toLowerCase().includes(q)).slice(0, 40);
+  return `<div class="modal" id="bg"><div class="card">
+    <h3>Add a stop for ${esc(longDate(open))}</h3>
+    <p class="sub" style="margin:0">This day only. The weekly pattern is not changed.</p>
+    <input id="mq" placeholder="Search customers&hellip;" value="${esc(modal.q || '')}">
+    <div class="picks">
+      ${hits.map(c => `<button class="pick" data-pick="${c.id}">${esc(c.name)}
+        <small>${esc([c.address_line, c.suburb].filter(Boolean).join(', ') || 'No address')}</small></button>`).join('')
+        || '<div class="empty" style="padding:16px">Nothing matches. Add them on the Customers page first.</div>'}
+    </div>
+    <div class="cardacts"><button class="ghostbtn" id="mcancel">Cancel</button><span></span></div>
+  </div></div>`;
 }
 
 /* ── shell ───────────────────────────────────────────────────────────────── */
@@ -255,41 +366,59 @@ function render() {
       </div>
     </div>
     ${dayHTML()}
-  </div>`;
+  </div>${modalHTML()}`;
 
   wireNav();
-  root.querySelector('#prev').addEventListener('click', () => shift(-1));
-  root.querySelector('#next').addEventListener('click', () => shift(1));
-  root.querySelector('#thismonth').addEventListener('click', () => {
-    month = todayISO().slice(0,7); open = null; dayData = null; refresh();
-  });
+  const $ = s => root.querySelector(s);
+  $('#prev').addEventListener('click', () => shift(-1));
+  $('#next').addEventListener('click', () => shift(1));
+  $('#thismonth').addEventListener('click', () => { month = todayISO().slice(0,7); open = null; dayData = null; refresh(); });
   root.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.day)));
 
-  const c = root.querySelector('#closeday');
-  if (c) c.addEventListener('click', () => { open = null; dayData = null; render(); });
-  const hl = root.querySelector('#hlabel');
-  if (hl) hl.addEventListener('input', e => { hol.label = e.target.value; });
-  const hs = root.querySelector('#hscope');
-  if (hs) hs.addEventListener('change', e => { hol.scope = e.target.value; });
-  const sh = root.querySelector('#sethol');
-  if (sh) sh.addEventListener('click', setHoliday);
-  const ch = root.querySelector('#clearhol');
-  if (ch) ch.addEventListener('click', clearHoliday);
+  const c = $('#closeday'); if (c) c.addEventListener('click', () => { open = null; dayData = null; render(); });
+  const hl = $('#hlabel'); if (hl) hl.addEventListener('input', e => { hol.label = e.target.value; });
+  const hs = $('#hscope'); if (hs) hs.addEventListener('change', e => { hol.scope = e.target.value; });
+  const sh = $('#sethol'); if (sh) sh.addEventListener('click', setHoliday);
+  const ch = $('#clearhol'); if (ch) ch.addEventListener('click', clearHoliday);
+
+  root.querySelectorAll('[data-rundriver]').forEach(el =>
+    el.addEventListener('change', e => setRunDriver(el.dataset.rundriver, e.target.value)));
+  root.querySelectorAll('[data-assign]').forEach(el =>
+    el.addEventListener('change', e => setStopDriver(el.dataset.assign, e.target.value)));
+  root.querySelectorAll('[data-cancel]').forEach(b =>
+    b.addEventListener('click', () => cancelRun(b.dataset.cancel, true)));
+  root.querySelectorAll('[data-uncancel]').forEach(b =>
+    b.addEventListener('click', () => cancelRun(b.dataset.uncancel, false)));
+  root.querySelectorAll('[data-skip]').forEach(b => b.addEventListener('click', () => skipStop(b.dataset.skip)));
+  root.querySelectorAll('[data-unskip]').forEach(b => b.addEventListener('click', () => unskipStop(b.dataset.unskip)));
+  root.querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => moveStop(b.dataset.up, -1)));
+  root.querySelectorAll('[data-down]').forEach(b => b.addEventListener('click', () => moveStop(b.dataset.down, 1)));
+  root.querySelectorAll('[data-add]').forEach(b =>
+    b.addEventListener('click', () => { modal = { runDayId: b.dataset.add, q:'' }; render(); }));
+  root.querySelectorAll('[data-oc]').forEach(b => b.addEventListener('click', () => {
+    const [rd, cid] = b.dataset.oc.split('|'); addAdhoc(rd, cid);
+  }));
+
+  if (modal) {
+    $('#bg').addEventListener('click', e => { if (e.target.id === 'bg') { modal = null; render(); } });
+    $('#mcancel').addEventListener('click', () => { modal = null; render(); });
+    $('#mq').addEventListener('input', e => { modal.q = e.target.value; render(); $('#mq').focus(); });
+    root.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => {
+      const rd = modal.runDayId; modal = null; addAdhoc(rd, b.dataset.pick);
+    }));
+  }
 }
 
 function shift(n) {
   const d = new Date(month + '-01T00:00:00');
   d.setMonth(d.getMonth() + n);
-  month = iso(d).slice(0,7);
-  open = null; dayData = null;
-  refresh();
+  month = iso(d).slice(0,7); open = null; dayData = null; refresh();
 }
 
 async function openDay(date) {
   if (open === date) { open = null; dayData = null; return render(); }
   open = date; dayData = null; err = ''; render();
-  try { await loadDay(date); await loadMonth(); }
-  catch (e) { err = e.message; }
+  try { await loadDay(date); await loadMonth(); } catch (e) { err = e.message; }
   render();
 }
 
@@ -307,6 +436,11 @@ async function boot() {
   try {
     [business] = await db('businesses?select=id,slug,name&limit=1');
     routes = await db('routes?is_active=eq.true&select=id,name&order=sort_order.asc');
+    drivers = await db('drivers?select=id,display_name,is_active&order=sort_order.asc');
+    customers = await db('customers?archived_at=is.null&select=id,name,address_line,suburb&order=name.asc');
+    const oc = await db('route_stops?frequency=eq.on_call&select=customer_id&active_to=is.null');
+    const ids = [...new Set(oc.map(x => x.customer_id).filter(Boolean))];
+    onCall = customers.filter(c => ids.includes(c.id));
     await refresh();
   } catch (e) {
     if (/Signed out/.test(e.message)) return renderLogin();
