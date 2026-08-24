@@ -1,0 +1,12 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0011 — sensible defaults before the team is let in
+-- Applied via the Supabase MCP; see git history for full bodies.
+--
+-- The first confirmed hudsongroup.com.au address becomes the OWNER. Every
+-- signup after that lands as STAFF and has to be promoted deliberately.
+-- Previously every confirmed address became an owner, which would have handed
+-- the whole team PINs, the bulk import and the reports on day one.
+--
+--   grant_admin_on_confirm()  first = owner, rest = staff
+--   admin_set_role()          owner-only; cannot change your own level
+--   admin_list_people()       who has access, their level and last sign-in
