@@ -59,6 +59,13 @@
   .pick:hover{background:var(--accent-soft)}
   .pick[aria-pressed="true"]{background:var(--accent-soft); font-weight:700; color:var(--accent)}
   .pick small{display:block; color:var(--ink-3); font-weight:400}
+  .daypick{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+  .dp{padding:8px 13px; border:1.5px solid var(--line-2); border-radius:20px;
+    font-family:"Archivo",sans-serif; font-size:13px; font-weight:700; color:var(--ink-3)}
+  .dp:hover{border-color:var(--accent-line); color:var(--accent)}
+  .dp[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+  .dp.wk{border-style:dashed; font-size:12px}
+  .chipacts{display:flex; gap:2px; align-self:start}
 </style>
 </head>
 <body class="admin">
@@ -118,7 +125,10 @@ function gridHTML() {
                    data-stop="${s.id}" data-i="${i}" data-day="${w}">
                 <span class="grip">&#8942;&#8942;</span>
                 <span>${esc(s.kind === 'customer' ? custName(s.customer_id) : s.label)}</span>
-                <button class="x" data-rm="${s.id}" title="Take off ${label}">&times;</button>
+                <span class="chipacts">
+                  <button class="x" data-copy="${s.id}" title="Copy to other days">&#10697;</button>
+                  <button class="x" data-rm="${s.id}" title="Take off ${label}">&times;</button>
+                </span>
                 ${(FREQ[s.frequency] || s.scheduled_time) ? `<span class="mini ${s.frequency !== 'weekly' ? 'f' : ''}">${
                   esc([FREQ[s.frequency], hhmm(s.scheduled_time)].filter(Boolean).join(' · '))}</span>` : ''}
               </div>`).join('')}
@@ -202,20 +212,28 @@ function modalHTML() {
       </div>
     </div></div>`;
   }
-  // add a stop
+  // add a stop — to as many days as you like at once
   const q = (modal.q || '').toLowerCase();
+  const chosen = modal.days || new Set();
   const hits = customers.filter(c => (c.name + ' ' + (c.suburb || '')).toLowerCase().includes(q)).slice(0, 40);
   return `<div class="modal" id="bg"><div class="card">
-    <h3>Add to ${esc(DAYS.find(d => d[0] === modal.weekday)[1])}</h3>
+    <h3>${modal.copyFrom ? 'Copy to other days' : 'Add to the run'}</h3>
     ${err ? `<p class="err">${esc(err)}</p>` : ''}
-    <label>What are you adding?</label>
-    <select id="m_kind">
+    <label>Which days?</label>
+    <div class="daypick">
+      ${DAYS.map(([w, l]) => `<button class="dp" data-day="${w}" aria-pressed="${chosen.has(w)}">${l}</button>`).join('')}
+      <button class="dp wk" id="mf">Mon&ndash;Fri</button>
+      <button class="dp wk" id="clr">Clear</button>
+    </div>
+    <label ${modal.copyFrom ? 'hidden' : ''}>What are you adding?</label>
+    <select id="m_kind" ${modal.copyFrom ? 'hidden' : ''}>
       <option value="customer" ${modal.kind === 'customer' ? 'selected' : ''}>A customer</option>
       <option value="depot" ${modal.kind === 'depot' ? 'selected' : ''}>Start or end point (tickable)</option>
       <option value="target" ${modal.kind === 'target' ? 'selected' : ''}>A time to aim for</option>
       <option value="note" ${modal.kind === 'note' ? 'selected' : ''}>A plain direction</option>
     </select>
-    ${modal.kind === 'customer' ? `
+    ${modal.copyFrom ? `<p class="sub" style="margin:10px 0 0">Copying <b>${esc(modal.copyName)}</b> with the same settings.</p>`
+    : modal.kind === 'customer' ? `
       <label for="m_q">Customer</label>
       <input id="m_q" placeholder="Search the master list&hellip;" value="${esc(modal.q || '')}">
       <div class="picks">
@@ -236,7 +254,8 @@ function modalHTML() {
     <input id="m_time2" type="time" value="${esc(hhmm(modal.scheduled_time))}">
     <div class="cardacts">
       <button class="ghostbtn" id="mcancel">Cancel</button>
-      <button class="btn" id="msave" style="padding:12px 0">Add it</button>
+      <button class="btn" id="msave" style="padding:12px 0">${
+        modal.copyFrom ? 'Copy it across' : 'Add it'}</button>
     </div>
   </div></div>`;
 }
@@ -254,6 +273,13 @@ function wireModal() {
     $('#m_time').addEventListener('change', e => { modal.start_time = e.target.value || null; });
     return;
   }
+  root.querySelectorAll('.dp[data-day]').forEach(b => b.addEventListener('click', () => {
+    const w = +b.dataset.day;
+    modal.days.has(w) ? modal.days.delete(w) : modal.days.add(w);
+    render();
+  }));
+  $('#mf').addEventListener('click', () => { modal.days = new Set([1,2,3,4,5]); render(); });
+  $('#clr').addEventListener('click', () => { modal.days = new Set(); render(); });
   $('#m_kind').addEventListener('change', e => { modal.kind = e.target.value; render(); });
   $('#m_time2').addEventListener('change', e => { modal.scheduled_time = e.target.value || null; });
   const q = $('#m_q');
@@ -304,29 +330,37 @@ async function saveRun() {
 
 async function saveStop() {
   const isCust = modal.kind === 'customer';
+  const days = [...(modal.days || new Set())].sort();
+  if (!days.length) { err = 'Pick at least one day.'; return render(); }
   if (isCust && !modal.customer_id) { err = 'Pick a customer.'; return render(); }
   if (!isCust && !(modal.label || '').trim()) { err = 'Type what the driver should see.'; return render(); }
 
-  const body = {
-    business_id: business.id, route_id: sel, weekday: modal.weekday,
-    kind: modal.kind,
-    customer_id: isCust ? modal.customer_id : null,
-    label: isCust ? null : (modal.label || '').trim(),
-    tickable: modal.kind === 'depot',
-    scheduled_time: modal.scheduled_time || null,
-    frequency: isCust ? (modal.frequency || 'weekly') : 'weekly',
-    seq: (forDay(modal.weekday).length + 1) * 10,
-    visit_no: isCust
-      ? live().filter(s => s.weekday === modal.weekday && s.customer_id === modal.customer_id).length + 1
-      : 1
-  };
-  if (body.frequency === 'fortnightly') body.anchor_date = nextWeekday(modal.weekday);
-  if (body.frequency === 'monthly_nth') body.nth_of_month = 1;
-
   try {
-    await db('route_stops', { method:'POST', body: JSON.stringify(body) });
+    // One row per day. The weekly pattern is by weekday, so this is what makes
+    // "the same run five days a week" a single action instead of five.
+    for (const weekday of days) {
+      const already = live().filter(x =>
+        x.weekday === weekday && isCust && x.customer_id === modal.customer_id);
+      const body = {
+        business_id: business.id, route_id: sel, weekday,
+        kind: modal.kind,
+        customer_id: isCust ? modal.customer_id : null,
+        label: isCust ? null : (modal.label || '').trim(),
+        tickable: modal.kind === 'depot',
+        scheduled_time: modal.scheduled_time || null,
+        frequency: isCust ? (modal.frequency || 'weekly') : 'weekly',
+        seq: (forDay(weekday).length + 1) * 10,
+        visit_no: already.length + 1
+      };
+      // anchor_date is snapped to the stop's own weekday by a trigger, so a
+      // fortnightly stop copied across days can't land on an impossible cycle
+      if (body.frequency === 'fortnightly') body.anchor_date = nextWeekday(weekday);
+      if (body.frequency === 'monthly_nth') body.nth_of_month = 1;
+      await db('route_stops', { method:'POST', body: JSON.stringify(body) });
+      stops.push({ ...body, id: 'tmp-' + weekday, active_to: null });   // keep seq counting
+    }
     modal = null; err = ''; await reload(); render();
-  } catch (e) { err = e.message; render(); }
+  } catch (e) { err = e.message; await reload(); render(); }
 }
 
 function nextWeekday(iso) {
@@ -364,7 +398,17 @@ function render() {
   const e = root.querySelector('#editrun');
   if (e) e.addEventListener('click', () => { modal = { type:'run', ...routes.find(r => r.id === sel) }; err=''; render(); });
   root.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () =>
-    { modal = { type:'stop', weekday:+b.dataset.add, kind:'customer', frequency:'weekly', q:'' }; err=''; render(); }));
+    { modal = { type:'stop', days:new Set([+b.dataset.add]), kind:'customer', frequency:'weekly', q:'' };
+      err=''; render(); }));
+  root.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const src = stops.find(x => x.id === b.dataset.copy);
+    modal = { type:'stop', copyFrom:src.id,
+              copyName: src.kind === 'customer' ? custName(src.customer_id) : src.label,
+              days:new Set(), kind:src.kind, customer_id:src.customer_id, label:src.label,
+              frequency:src.frequency, scheduled_time:src.scheduled_time, q:'' };
+    err=''; render();
+  }));
   root.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', ev =>
     { ev.stopPropagation(); removeStop(b.dataset.rm); }));
   wireDrag();
