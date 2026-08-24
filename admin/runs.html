@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Runs — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .runsplit{display:grid; grid-template-columns:minmax(0,240px) minmax(0,1fr)}
+  @media (max-width:900px){.runsplit{grid-template-columns:1fr}}
+  .runlist{border-right:1.5px solid var(--line)}
+  .runbtn{display:block; width:100%; text-align:left; padding:12px 16px; border-bottom:1.5px solid var(--line); background:none}
+  .runbtn:hover{background:var(--surface-2)}
+  .runbtn[aria-current="true"]{background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent)}
+  .runbtn b{font-family:"Archivo",sans-serif; font-size:15px; font-weight:700; display:block}
+  .runbtn span{font-size:12.5px; color:var(--ink-2)}
+  .hint{padding:11px 20px; background:var(--accent-soft); border-bottom:1.5px solid var(--accent-line); font-size:13.5px; color:var(--ink-2)}
+  .gridscroll{overflow-x:auto}
+  .week{display:grid; grid-template-columns:repeat(6,minmax(160px,1fr)); min-width:980px}
+  .day{border-right:1.5px solid var(--line); display:flex; flex-direction:column}
+  .day:last-child{border-right:0}
+  .day > h4{font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:700; letter-spacing:.1em;
+    text-transform:uppercase; padding:10px 12px; background:var(--surface-2);
+    border-bottom:1.5px solid var(--line); color:var(--ink-3); display:flex; justify-content:space-between}
+  .chips{display:flex; flex-direction:column; gap:6px; padding:10px; min-height:70px; flex:1; transition:background .12s}
+  .chips.over{background:var(--accent-soft)}
+  .chip{background:var(--surface-2); border:1.5px solid var(--line); border-radius:4px; padding:7px 8px;
+    font-size:13px; font-weight:600; line-height:1.3; display:grid; grid-template-columns:11px 1fr auto;
+    gap:2px 7px; cursor:grab; align-items:start}
+  .chip:hover{border-color:var(--accent-line)}
+  .chip.dragging{opacity:.38; cursor:grabbing}
+  .chip.marker{background:var(--accent-soft); border-color:var(--accent-line); color:var(--accent)}
+  .grip{grid-row:1 / span 2; color:var(--ink-3); font-size:11px; letter-spacing:-1px; user-select:none}
+  .chip .x{border-radius:50%; width:17px; height:17px; display:grid; place-items:center;
+    color:var(--ink-3); font-size:13px; line-height:1}
+  .chip .x:hover{background:var(--issue); color:#fff}
+  .chip .mini{grid-column:2; justify-self:start; font-family:"Archivo",sans-serif; font-size:9.5px;
+    font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:1.5px 5px;
+    border-radius:3px; border:1.5px solid var(--line-2); background:var(--surface-3); color:var(--ink-3)}
+  .chip .mini.f{color:var(--flag); background:var(--flag-soft); border-color:var(--flag-line)}
+  .addchip{margin:0 10px 10px; padding:7px 9px; border:1.5px dashed var(--line-2); border-radius:4px;
+    font-size:12.5px; font-weight:600; color:var(--ink-3); text-align:left}
+  .addchip:hover{color:var(--accent); border-color:var(--accent-line)}
+  .modal{position:fixed; inset:0; background:rgba(8,14,20,.5); display:grid; place-items:center; z-index:20; padding:20px}
+  .card{background:var(--surface); border-radius:var(--r); box-shadow:var(--shadow); width:100%; max-width:460px; padding:22px}
+  .card h3{font-size:18px; font-weight:700; margin-bottom:12px}
+  .card label{display:block; font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin:14px 0 5px}
+  .card input, .card select{width:100%; padding:11px; border:1.5px solid var(--line-2);
+    border-radius:var(--r); background:var(--surface-2); font-size:15px}
+  .cardacts{display:grid; grid-template-columns:1fr 1.4fr; gap:9px; margin-top:18px}
+  .picks{max-height:190px; overflow-y:auto; border:1.5px solid var(--line); border-radius:var(--r); margin-top:6px}
+  .pick{display:block; width:100%; text-align:left; padding:9px 12px; border-bottom:1.5px solid var(--line); background:none; font-size:14px}
+  .pick:hover{background:var(--accent-soft)}
+  .pick[aria-pressed="true"]{background:var(--accent-soft); font-weight:700; color:var(--accent)}
+  .pick small{display:block; color:var(--ink-3); font-weight:400}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, db, esc, hhmm, nav, wireNav, mountLogin } from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const DAYS = [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat']];
+const FREQ = { weekly:'', fortnightly:'fortnightly', monthly_nth:'monthly', on_call:'on call' };
+
+let business = null, routes = [], drivers = [], customers = [], stops = [];
+let sel = null, err = '', modal = null, drag = null;
+
+function renderLogin() { mountLogin(root, boot); }
+
+const live = () => stops.filter(s => s.route_id === sel && !s.active_to);
+const forDay = w => live().filter(s => s.weekday === w).sort((a,b) => a.seq - b.seq);
+const custName = id => (customers.find(c => c.id === id) || {}).name || '(removed customer)';
+
+/* ── runs list ───────────────────────────────────────────────────────────── */
+
+function listHTML() {
+  return `<div class="runlist">
+    ${routes.map(r => {
+      const n = stops.filter(s => s.route_id === r.id && !s.active_to).length;
+      const d = drivers.find(x => x.id === r.default_driver_id);
+      return `<button class="runbtn" data-run="${r.id}" aria-current="${sel === r.id}">
+        <b>${esc(r.name)}${r.is_active ? '' : ' <span class="badge">off</span>'}</b>
+        <span>${d ? esc(d.display_name) : 'No driver'}${r.start_time ? ' · ' + hhmm(r.start_time) : ''} · ${n} stops</span>
+      </button>`;
+    }).join('') || '<div class="empty">No runs yet.</div>'}
+    <button class="addchip" id="newrun" style="margin:10px">+ New run</button>
+  </div>`;
+}
+
+/* ── week grid ───────────────────────────────────────────────────────────── */
+
+function gridHTML() {
+  if (!sel) return '<div class="empty">Pick a run on the left, or create one.</div>';
+  const r = routes.find(x => x.id === sel);
+  return `
+    <div class="hint">
+      <b>Every week, from now on.</b> Drag a customer between columns to change their day,
+      or within a column to change the order it&rsquo;s driven. Taking one off stops it from
+      tomorrow &mdash; days already generated are untouched.
+      <button class="undo" id="editrun" style="margin-left:8px">Edit this run</button>
+    </div>
+    <div class="gridscroll"><div class="week">
+      ${DAYS.map(([w, label]) => `
+        <div class="day">
+          <h4><span>${label}</span><span class="num">${forDay(w).length}</span></h4>
+          <div class="chips" data-day="${w}">
+            ${forDay(w).map((s, i) => `
+              <div class="chip ${s.kind !== 'customer' ? 'marker' : ''}" draggable="true"
+                   data-stop="${s.id}" data-i="${i}" data-day="${w}">
+                <span class="grip">&#8942;&#8942;</span>
+                <span>${esc(s.kind === 'customer' ? custName(s.customer_id) : s.label)}</span>
+                <button class="x" data-rm="${s.id}" title="Take off ${label}">&times;</button>
+                ${(FREQ[s.frequency] || s.scheduled_time) ? `<span class="mini ${s.frequency !== 'weekly' ? 'f' : ''}">${
+                  esc([FREQ[s.frequency], hhmm(s.scheduled_time)].filter(Boolean).join(' · '))}</span>` : ''}
+              </div>`).join('')}
+          </div>
+          <button class="addchip" data-add="${w}">+ add to ${label}</button>
+        </div>`).join('')}
+    </div></div>`;
+}
+
+/* ── drag ────────────────────────────────────────────────────────────────── */
+
+function wireDrag() {
+  root.querySelectorAll('.chip').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      drag = { id: el.dataset.stop, day: +el.dataset.day };
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', el.dataset.stop);
+    });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); drag = null; });
+  });
+
+  root.querySelectorAll('.chips').forEach(zone => {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('over'); });
+    zone.addEventListener('drop', async e => {
+      e.preventDefault(); zone.classList.remove('over');
+      if (!drag) return;
+      const toDay = +zone.dataset.day;
+      const others = [...zone.querySelectorAll('.chip:not(.dragging)')];
+      let at = others.length;
+      for (let j = 0; j < others.length; j++) {
+        const rect = others[j].getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) { at = j; break; }
+      }
+      await moveStop(drag.id, toDay, at);
+      drag = null;
+    });
+  });
+}
+
+async function moveStop(id, toDay, at) {
+  const moving = stops.find(s => s.id === id);
+  const target = forDay(toDay).filter(s => s.id !== id);
+  target.splice(Math.min(at, target.length), 0, moving);
+  try {
+    // Renumber the whole column in tens. Cheap at this size and it keeps the
+    // sequence readable rather than drifting into fractions.
+    for (let i = 0; i < target.length; i++) {
+      const want = (i + 1) * 10;
+      if (target[i].seq !== want || target[i].weekday !== toDay) {
+        await db(`route_stops?id=eq.${target[i].id}`, { method:'PATCH',
+          body: JSON.stringify({ seq: want, weekday: toDay }) });
+      }
+    }
+    await reload(); render();
+  } catch (e) { err = e.message; render(); }
+}
+
+/* ── add / remove ────────────────────────────────────────────────────────── */
+
+function modalHTML() {
+  if (!modal) return '';
+  if (modal.type === 'run') {
+    const isNew = !modal.id;
+    return `<div class="modal" id="bg"><div class="card">
+      <h3>${isNew ? 'New run' : 'Edit run'}</h3>
+      ${err ? `<p class="err">${esc(err)}</p>` : ''}
+      <label for="m_name">Name</label>
+      <input id="m_name" value="${esc(modal.name || '')}" placeholder="Van, Fixed truck, West &amp; Geelong">
+      <label for="m_drv">Usual driver</label>
+      <select id="m_drv"><option value="">Nobody yet</option>
+        ${drivers.filter(d => d.is_active).map(d =>
+          `<option value="${d.id}" ${modal.default_driver_id === d.id ? 'selected' : ''}>${esc(d.display_name)}</option>`).join('')}
+      </select>
+      <label for="m_time">Start time</label>
+      <input id="m_time" type="time" value="${esc(hhmm(modal.start_time))}">
+      <div class="cardacts">
+        <button class="ghostbtn" id="mcancel">Cancel</button>
+        <button class="btn" id="msave" style="padding:12px 0">${isNew ? 'Create run' : 'Save'}</button>
+      </div>
+    </div></div>`;
+  }
+  // add a stop
+  const q = (modal.q || '').toLowerCase();
+  const hits = customers.filter(c => (c.name + ' ' + (c.suburb || '')).toLowerCase().includes(q)).slice(0, 40);
+  return `<div class="modal" id="bg"><div class="card">
+    <h3>Add to ${esc(DAYS.find(d => d[0] === modal.weekday)[1])}</h3>
+    ${err ? `<p class="err">${esc(err)}</p>` : ''}
+    <label>What are you adding?</label>
+    <select id="m_kind">
+      <option value="customer" ${modal.kind === 'customer' ? 'selected' : ''}>A customer</option>
+      <option value="depot" ${modal.kind === 'depot' ? 'selected' : ''}>Start or end point (tickable)</option>
+      <option value="target" ${modal.kind === 'target' ? 'selected' : ''}>A time to aim for</option>
+      <option value="note" ${modal.kind === 'note' ? 'selected' : ''}>A plain direction</option>
+    </select>
+    ${modal.kind === 'customer' ? `
+      <label for="m_q">Customer</label>
+      <input id="m_q" placeholder="Search the master list&hellip;" value="${esc(modal.q || '')}">
+      <div class="picks">
+        ${hits.map(c => `<button class="pick" data-cust="${c.id}" aria-pressed="${modal.customer_id === c.id}">
+          ${esc(c.name)}<small>${esc([c.address_line, c.suburb].filter(Boolean).join(', ') || 'No address')}</small>
+        </button>`).join('') || '<div class="empty" style="padding:18px">Nothing matches. Add them on the Customers page first.</div>'}
+      </div>
+      <label for="m_freq">How often</label>
+      <select id="m_freq">
+        <option value="weekly">Every week</option>
+        <option value="fortnightly" ${modal.frequency === 'fortnightly' ? 'selected' : ''}>Fortnightly</option>
+        <option value="monthly_nth" ${modal.frequency === 'monthly_nth' ? 'selected' : ''}>Monthly (this week of the month)</option>
+        <option value="on_call" ${modal.frequency === 'on_call' ? 'selected' : ''}>On call only — never scheduled</option>
+      </select>`
+    : `<label for="m_label">Wording the driver sees</label>
+       <input id="m_label" value="${esc(modal.label || '')}" placeholder="Back at the plant by 5.30">`}
+    <label for="m_time2">Time (optional)</label>
+    <input id="m_time2" type="time" value="${esc(hhmm(modal.scheduled_time))}">
+    <div class="cardacts">
+      <button class="ghostbtn" id="mcancel">Cancel</button>
+      <button class="btn" id="msave" style="padding:12px 0">Add it</button>
+    </div>
+  </div></div>`;
+}
+
+function wireModal() {
+  if (!modal) return;
+  const $ = s => root.querySelector(s);
+  $('#bg').addEventListener('click', e => { if (e.target.id === 'bg') { modal = null; err = ''; render(); } });
+  $('#mcancel').addEventListener('click', () => { modal = null; err = ''; render(); });
+  $('#msave').addEventListener('click', modal.type === 'run' ? saveRun : saveStop);
+
+  if (modal.type === 'run') {
+    $('#m_name').addEventListener('input', e => { modal.name = e.target.value; });
+    $('#m_drv').addEventListener('change', e => { modal.default_driver_id = e.target.value || null; });
+    $('#m_time').addEventListener('change', e => { modal.start_time = e.target.value || null; });
+    return;
+  }
+  $('#m_kind').addEventListener('change', e => { modal.kind = e.target.value; render(); });
+  $('#m_time2').addEventListener('change', e => { modal.scheduled_time = e.target.value || null; });
+  const q = $('#m_q');
+  if (q) {
+    q.addEventListener('input', e => {
+      modal.q = e.target.value;
+      const picks = root.querySelector('.picks');
+      const tmp = document.createElement('div'); tmp.innerHTML = modalHTML();
+      picks.replaceWith(tmp.querySelector('.picks'));
+      wirePicks();
+    });
+  }
+  const f = $('#m_freq');
+  if (f) f.addEventListener('change', e => { modal.frequency = e.target.value; });
+  const l = $('#m_label');
+  if (l) l.addEventListener('input', e => { modal.label = e.target.value; });
+  wirePicks();
+}
+
+function wirePicks() {
+  root.querySelectorAll('[data-cust]').forEach(b => b.addEventListener('click', () => {
+    modal.customer_id = b.dataset.cust;
+    root.querySelectorAll('[data-cust]').forEach(x =>
+      x.setAttribute('aria-pressed', x.dataset.cust === modal.customer_id));
+  }));
+}
+
+async function saveRun() {
+  const name = (modal.name || '').trim();
+  if (!name) { err = 'Give the run a name.'; return render(); }
+  const body = { name, default_driver_id: modal.default_driver_id || null,
+                 start_time: modal.start_time || null };
+  try {
+    if (modal.id) await db(`routes?id=eq.${modal.id}`, { method:'PATCH', body: JSON.stringify(body) });
+    else {
+      body.business_id = business.id;
+      body.sort_order = (Math.max(0, ...routes.map(r => r.sort_order)) + 10);
+      const [row] = await db('routes', { method:'POST',
+        headers:{ Prefer:'return=representation' }, body: JSON.stringify(body) });
+      sel = row.id;
+    }
+    modal = null; err = ''; await reload(); render();
+  } catch (e) {
+    err = /duplicate key/.test(e.message) ? 'There is already a run with that name.' : e.message;
+    render();
+  }
+}
+
+async function saveStop() {
+  const isCust = modal.kind === 'customer';
+  if (isCust && !modal.customer_id) { err = 'Pick a customer.'; return render(); }
+  if (!isCust && !(modal.label || '').trim()) { err = 'Type what the driver should see.'; return render(); }
+
+  const body = {
+    business_id: business.id, route_id: sel, weekday: modal.weekday,
+    kind: modal.kind,
+    customer_id: isCust ? modal.customer_id : null,
+    label: isCust ? null : (modal.label || '').trim(),
+    tickable: modal.kind === 'depot',
+    scheduled_time: modal.scheduled_time || null,
+    frequency: isCust ? (modal.frequency || 'weekly') : 'weekly',
+    seq: (forDay(modal.weekday).length + 1) * 10,
+    visit_no: isCust
+      ? live().filter(s => s.weekday === modal.weekday && s.customer_id === modal.customer_id).length + 1
+      : 1
+  };
+  if (body.frequency === 'fortnightly') body.anchor_date = nextWeekday(modal.weekday);
+  if (body.frequency === 'monthly_nth') body.nth_of_month = 1;
+
+  try {
+    await db('route_stops', { method:'POST', body: JSON.stringify(body) });
+    modal = null; err = ''; await reload(); render();
+  } catch (e) { err = e.message; render(); }
+}
+
+function nextWeekday(iso) {
+  const d = new Date();
+  const cur = d.getDay() === 0 ? 7 : d.getDay();
+  d.setDate(d.getDate() + ((iso - cur + 7) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+async function removeStop(id) {
+  // Effective-dated, never deleted: the pattern stays auditable and any day
+  // already generated keeps its rows.
+  try {
+    await db(`route_stops?id=eq.${id}`, { method:'PATCH',
+      body: JSON.stringify({ active_to: new Date(Date.now() - 86400000).toISOString().slice(0,10) }) });
+    await reload(); render();
+  } catch (e) { err = e.message; render(); }
+}
+
+/* ── shell ───────────────────────────────────────────────────────────────── */
+
+function render() {
+  root.innerHTML = `${nav('runs.html')}<div class="wrap"><div class="panel">
+    <header><div><h2>Runs</h2>
+      <span class="when">A run is one driver&rsquo;s weekly pattern. This is the template, not any one day.</span></div></header>
+    ${err && !modal ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}
+    <div class="runsplit">${listHTML()}<div>${gridHTML()}</div></div>
+  </div></div>${modalHTML()}`;
+
+  wireNav();
+  root.querySelectorAll('[data-run]').forEach(b =>
+    b.addEventListener('click', () => { sel = b.dataset.run; err = ''; render(); }));
+  root.querySelector('#newrun').addEventListener('click', () => { modal = { type:'run' }; err=''; render(); });
+  const e = root.querySelector('#editrun');
+  if (e) e.addEventListener('click', () => { modal = { type:'run', ...routes.find(r => r.id === sel) }; err=''; render(); });
+  root.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () =>
+    { modal = { type:'stop', weekday:+b.dataset.add, kind:'customer', frequency:'weekly', q:'' }; err=''; render(); }));
+  root.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', ev =>
+    { ev.stopPropagation(); removeStop(b.dataset.rm); }));
+  wireDrag();
+  wireModal();
+}
+
+async function reload() {
+  routes = await db('routes?select=id,name,default_driver_id,start_time,is_active,sort_order&order=sort_order.asc');
+  stops = await db('route_stops?select=id,route_id,customer_id,kind,label,tickable,weekday,visit_no,seq,scheduled_time,frequency,active_to');
+  if (!sel && routes.length) sel = routes[0].id;
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    drivers = await db('drivers?select=id,display_name,is_active&order=sort_order.asc');
+    customers = await db('customers?archived_at=is.null&select=id,name,address_line,suburb&order=name.asc');
+    await reload();
+    render();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('runs.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

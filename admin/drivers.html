@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Drivers — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, db, rpcAdmin, esc, clock, nav, wireNav, mountLogin } from '../assets/admin.js';
+
+const root = document.getElementById('root');
+let drivers = [], sessions = [], business = null;
+let draft = null, err = '', pinFor = null, pinVal = '', pinMsg = '';
+
+function renderLogin() { mountLogin(root, boot); }
+
+const last4 = p => (p || '').replace(/[^0-9]/g, '').slice(-4);
+
+/* ── add / edit ──────────────────────────────────────────────────────────── */
+
+function formHTML() {
+  if (!draft) return '';
+  const isNew = !draft.id;
+  const suggested = last4(draft.phone);
+  return `<div class="panel">
+    <header><h2>${isNew ? 'Add a driver' : 'Edit ' + esc(draft.display_name || 'driver')}</h2>
+      <span class="when">The name here is what they tap on their phone.</span></header>
+    ${err ? `<p class="err" style="margin:14px 20px 0">${esc(err)}</p>` : ''}
+    <div class="lookup" style="background:var(--surface)">
+      <div><label for="d_name">Name</label>
+        <input id="d_name" data-k="display_name" value="${esc(draft.display_name || '')}" placeholder="Kemu"></div>
+      <div><label for="d_phone">Mobile</label>
+        <input id="d_phone" data-k="phone" value="${esc(draft.phone || '')}" placeholder="0412 345 678"></div>
+      ${isNew ? `<div><label for="d_pin">PIN</label>
+        <input id="d_pin" data-k="pin" inputmode="numeric" maxlength="4"
+               value="${esc(draft.pin || '')}" placeholder="${suggested.length === 4 ? suggested : '4 digits'}">
+        </div>` : ''}
+    </div>
+    ${isNew && suggested.length === 4 ? `<p class="when" style="padding:0 20px 4px">
+      Leave the PIN blank and it uses the last four of the mobile &mdash; ${esc(suggested)}.</p>` : ''}
+    <div class="lookup" style="background:var(--surface);border-top:0;padding-top:8px">
+      <div><button class="btn" id="save" style="width:100%;padding:11px 0">
+        ${isNew ? 'Add driver' : 'Save changes'}</button></div>
+      <div><button class="ghostbtn" id="cancel">Cancel</button></div>
+      ${isNew ? '' : `<div><button class="ghostbtn" id="toggle">
+        ${draft.is_active === false ? 'Put back on' : 'Deactivate'}</button></div>`}
+    </div>
+  </div>`;
+}
+
+function wireForm() {
+  if (!draft) return;
+  root.querySelectorAll('[data-k]').forEach(i =>
+    i.addEventListener('input', e => { draft[e.target.dataset.k] = e.target.value; }));
+  root.querySelector('#save').addEventListener('click', save);
+  root.querySelector('#cancel').addEventListener('click', () => { draft = null; err = ''; render(); });
+  const t = root.querySelector('#toggle');
+  if (t) t.addEventListener('click', toggleActive);
+}
+
+async function save() {
+  err = '';
+  try {
+    if (draft.id) {
+      await db(`drivers?id=eq.${draft.id}`, { method:'PATCH', body: JSON.stringify({
+        display_name: (draft.display_name || '').trim(),
+        phone: (draft.phone || '').trim() || null
+      })});
+    } else {
+      await rpcAdmin('admin_create_driver', {
+        p_business_id: business.id,
+        p_display_name: (draft.display_name || '').trim(),
+        p_phone: (draft.phone || '').trim() || null,
+        p_pin: (draft.pin || '').trim() || null
+      });
+    }
+    draft = null; await reload(); render();
+  } catch (e) { err = e.message; render(); }
+}
+
+async function toggleActive() {
+  try {
+    // Deactivating also kills live sessions -- a trigger does it, so an
+    // ex-employee can't keep a valid one for up to 30 days.
+    await db(`drivers?id=eq.${draft.id}`, { method:'PATCH',
+      body: JSON.stringify({ is_active: draft.is_active === false }) });
+    draft = null; await reload(); render();
+  } catch (e) { err = e.message; render(); }
+}
+
+/* ── PIN ─────────────────────────────────────────────────────────────────── */
+
+async function setPin(d) {
+  const pin = (pinVal || '').trim();
+  if (!/^\d{4}$/.test(pin)) { pinMsg = 'Four digits.'; return render(); }
+  try {
+    await rpcAdmin('admin_set_driver_pin', { p_driver_id: d.id, p_pin: pin });
+    pinMsg = `${d.display_name}'s PIN is now ${pin}. Tell them — it can't be looked up later.`;
+    pinFor = null; pinVal = '';
+    await reload(); render();
+  } catch (e) { pinMsg = e.message; render(); }
+}
+
+async function signOutAll(d) {
+  try {
+    const n = await rpcAdmin('admin_revoke_driver_sessions', { p_driver_id: d.id });
+    pinMsg = n ? `Signed ${d.display_name} out of ${n} device${n === 1 ? '' : 's'}.`
+               : `${d.display_name} had no devices signed in.`;
+    await reload(); render();
+  } catch (e) { pinMsg = e.message; render(); }
+}
+
+/* ── table ───────────────────────────────────────────────────────────────── */
+
+function tableHTML() {
+  return `<div class="panel">
+    <header>
+      <div><h2>Drivers</h2>
+        <span class="when">PINs are set here and told to the driver. They can never be read back.</span></div>
+      <button class="btn" id="new">+ Add driver</button>
+    </header>
+    ${pinMsg ? `<p class="err" style="margin:14px 20px 0;background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)">${esc(pinMsg)}</p>` : ''}
+    <div class="tablewrap"><table>
+      <thead><tr><th>Name</th><th>Mobile</th><th>Status</th><th>Signed in</th><th>PIN</th></tr></thead>
+      <tbody>
+        ${drivers.map(d => {
+          const s = sessions.find(x => x.driver_id === d.id);
+          const locked = d.locked_until && new Date(d.locked_until) > new Date();
+          return `<tr>
+            <td class="nm" data-edit="${d.id}" style="cursor:pointer">${esc(d.display_name)}</td>
+            <td class="dim">${esc(d.phone || '—')}</td>
+            <td>${d.is_active
+                  ? '<span class="badge on">active</span>'
+                  : '<span class="badge">off</span>'}
+                ${locked ? '<span class="badge bad">locked out</span>' : ''}</td>
+            <td class="dim">${s ? `${s.live} device${s.live === 1 ? '' : 's'} · ${clock(s.last_seen)}` : '—'}
+                ${s ? `<button class="undo" data-out="${d.id}">sign out</button>` : ''}</td>
+            <td>${pinFor === d.id
+              ? `<input class="pinbox" id="pinbox" inputmode="numeric" maxlength="4" value="${esc(pinVal)}"
+                        placeholder="${esc(last4(d.phone) || '4 digits')}">
+                 <button class="undo" data-savepin="${d.id}">save</button>
+                 <button class="undo" data-cancelpin="1">cancel</button>`
+              : `<button class="undo" data-pin="${d.id}">${locked ? 'reset &amp; unlock' : 'set PIN'}</button>`}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="empty">No drivers yet.</td></tr>'}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function render() {
+  root.innerHTML = `${nav('drivers.html')}<div class="wrap">${formHTML()}${tableHTML()}</div>`;
+  wireNav(); wireForm();
+
+  root.querySelector('#new').addEventListener('click', () => {
+    draft = {}; err = ''; pinMsg = ''; render();
+    const f = root.querySelector('#d_name'); if (f) f.focus();
+  });
+  root.querySelectorAll('[data-edit]').forEach(td => td.addEventListener('click', () => {
+    draft = { ...drivers.find(d => d.id === td.dataset.edit) };
+    err = ''; pinMsg = ''; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+  root.querySelectorAll('[data-pin]').forEach(b => b.addEventListener('click', () => {
+    pinFor = b.dataset.pin;
+    pinVal = last4((drivers.find(d => d.id === pinFor) || {}).phone) || '';
+    pinMsg = ''; render();
+    const box = root.querySelector('#pinbox'); if (box) { box.focus(); box.select(); }
+  }));
+  root.querySelectorAll('[data-savepin]').forEach(b => b.addEventListener('click', () =>
+    setPin(drivers.find(d => d.id === b.dataset.savepin))));
+  root.querySelectorAll('[data-cancelpin]').forEach(b => b.addEventListener('click', () => {
+    pinFor = null; pinVal = ''; pinMsg = ''; render();
+  }));
+  root.querySelectorAll('[data-out]').forEach(b => b.addEventListener('click', () =>
+    signOutAll(drivers.find(d => d.id === b.dataset.out))));
+  const box = root.querySelector('#pinbox');
+  if (box) {
+    box.addEventListener('input', e => { pinVal = e.target.value.replace(/[^0-9]/g, ''); });
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Enter') setPin(drivers.find(d => d.id === pinFor));
+    });
+  }
+}
+
+async function reload() {
+  drivers = await db('drivers?select=id,display_name,phone,is_active,sort_order,locked_until&order=sort_order.asc');
+  sessions = await rpcAdmin('admin_driver_sessions', { p_business_id: business.id });
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    await reload();
+    render();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('drivers.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+<style>
+  .pinbox{width:78px; padding:6px 8px; border:1.5px solid var(--line-2); border-radius:4px;
+          background:var(--surface-2); font-family:"Archivo",sans-serif; font-weight:700;
+          font-variant-numeric:tabular-nums; margin-right:6px}
+  td .undo{margin-left:8px}
+</style>
+</body>
+</html>

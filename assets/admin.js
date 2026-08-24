@@ -95,7 +95,9 @@ export function todayISO() {
 export function nav(current) {
   const items = [
     ['index.html', 'Today'],
+    ['runs.html', 'Runs'],
     ['customers.html', 'Customers'],
+    ['drivers.html', 'Drivers'],
     ['vans.html', 'Vans']
   ];
   return `<nav class="anav">

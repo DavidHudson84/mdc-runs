@@ -111,12 +111,17 @@ function detailHTML() {
     </div>
 
     ${isNew ? '' : `<div class="appears">
-      <h4>Appears on &mdash; ${esc(routes[0] ? routes[0].name : 'route')}</h4>
+      <h4>Appears on</h4>
       <div class="assigned">${ds.length
-        ? ds.map(([w,l]) => `<span class="abadge">${l}<button data-un="${w}" title="Take off ${l}">&times;</button></span>`).join('')
-        : '<span class="sub" style="margin:0">Not on any day yet.</span>'}</div>
-      <div class="assignrow"><span>Assign to:</span>
-        ${DAYS.slice(0,6).map(([w,l]) => `<button class="adday" data-as="${w}">${l}</button>`).join('')}</div>
+        ? ds.map(([w,l]) => {
+            const on = stops.filter(x => x.customer_id === draft.id && x.weekday === w && !x.active_to);
+            const rn = [...new Set(on.map(x => (routes.find(r => r.id === x.route_id)||{}).name).filter(Boolean))];
+            return `<span class="abadge">${l}${rn.length ? ' &middot; ' + esc(rn.join(', ')) : ''}</span>`;
+          }).join('')
+        : '<span class="sub" style="margin:0">Not on any run yet.</span>'}</div>
+      <p class="sub" style="margin:0">Days are set on the
+        <a href="runs.html" style="color:var(--accent)">Runs</a> page, where you can see the
+        whole week and drag stops into driving order.</p>
     </div>`}
   </div>`;
 }
@@ -159,8 +164,6 @@ function wireDetail() {
   if (c) c.addEventListener('click', () => { draft = sel ? { ...customers.find(x => x.id === sel) } : null; error=''; render(); });
   const s = root.querySelector('#save');
   if (s) s.addEventListener('click', save);
-  root.querySelectorAll('[data-as]').forEach(b => b.addEventListener('click', () => assign(+b.dataset.as)));
-  root.querySelectorAll('[data-un]').forEach(b => b.addEventListener('click', () => unassign(+b.dataset.un)));
 }
 
 /* ── writes ──────────────────────────────────────────────────────────────── */
@@ -192,37 +195,9 @@ async function save() {
   saving = false; render();
 }
 
-async function assign(weekday) {
-  const route = routes[0];
-  if (!route) { error = 'No route set up yet.'; return render(); }
-  const taken = stops.filter(s => s.customer_id === draft.id && s.weekday === weekday && !s.active_to);
-  try {
-    await db('route_stops', { method:'POST', body: JSON.stringify({
-      business_id: business.id, route_id: route.id, customer_id: draft.id,
-      kind:'customer', weekday, visit_no: taken.length + 1,
-      seq: (Math.max(0, ...stops.filter(s => s.weekday === weekday).map(s => s.seq)) + 10),
-      frequency:'weekly'
-    })});
-    await reload(); render();
-  } catch (err) { error = err.message; render(); }
-}
-
-async function unassign(weekday) {
-  // Effective-dated, not deleted: the pattern stays auditable and any day
-  // already generated is untouched.
-  const ids = stops.filter(s => s.customer_id === draft.id && s.weekday === weekday && !s.active_to).map(s => s.id);
-  try {
-    for (const id of ids) {
-      await db(`route_stops?id=eq.${id}`, { method:'PATCH',
-        body: JSON.stringify({ active_to: new Date(Date.now() - 86400000).toISOString().slice(0,10) }) });
-    }
-    await reload(); render();
-  } catch (err) { error = err.message; render(); }
-}
-
 async function reload() {
   customers = await db('customers?archived_at=is.null&select=*&order=name.asc');
-  stops = await db('route_stops?kind=eq.customer&select=id,customer_id,weekday,seq,visit_no,active_to');
+  stops = await db('route_stops?kind=eq.customer&select=id,route_id,customer_id,weekday,seq,visit_no,active_to');
 }
 
 async function boot() {
