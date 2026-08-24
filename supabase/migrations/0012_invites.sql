@@ -1,0 +1,17 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0012 — access by invitation
+-- Applied via the Supabase MCP; see git history for full bodies.
+--
+-- An address must be on the invites list BEFORE it can become anything, and the
+-- invite says what level it gets. Without this, "first signup is the owner, the
+-- rest are staff" meant anyone who found the URL and used a hudsongroup.com.au
+-- address landed inside the customer database.
+--
+-- An uninvited signup still gets an auth account, but no admins row -- and
+-- every RLS policy runs through admins, so they see no business data at all.
+--
+-- The very first account is still allowed through as owner, otherwise there is
+-- nobody who can create the first invite.
+--
+--   invites        email, role, full_name, accepted_at
+--   apply_invite() grant access to someone who signed up before being invited
