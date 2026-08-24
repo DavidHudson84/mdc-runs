@@ -30,6 +30,7 @@ let screen = 'loading';   // loading | van | run
 let stale = null;         // timestamp when showing a cached run
 let error = '';
 let sheet = null;         // { stopId, name, reason, note }
+let inbox = [], replyText = '';
 let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{}, showAll:false };
 
 // ?date=YYYY-MM-DD — for a driver finishing a late run after midnight, and for
@@ -54,6 +55,7 @@ async function load() {
   try {
     data = await api.today(forcedDate);
     cacheRun(data);
+    try { inbox = await api.inbox(); } catch { inbox = []; }
     stale = null;
     // The pre-start check belongs to today only — never gate a past or future
     // day behind a van you are not about to drive.
@@ -279,6 +281,15 @@ function renderRun() {
       <div class="bar"><i style="width:${tickable.length ? (settledCount / tickable.length * 100).toFixed(1) : 0}%"></i></div>
     </header>
 
+    ${inbox.length ? `<div class="msgs">
+      ${inbox.map(m => `<div class="msg" data-msg="${m.id}">
+        <div class="mtop"><span class="mfrom">From the office</span>
+          <span class="mwhen">${clock(m.created_at)}</span></div>
+        <p>${esc(m.body)}</p>
+        <input class="mreply" placeholder="Reply (optional)">
+        <button class="mack" data-ack="${m.id}">Got it</button>
+      </div>`).join('')}
+    </div>` : ''}
     ${stale ? `<div class="routehead" style="background:var(--flag-soft);color:var(--flag)">Showing your run as of ${clock(new Date(stale).toISOString())}</div>` : ''}
     ${error ? `<p class="err" style="margin:12px 14px 0">${esc(error)}</p>` : ''}
 
@@ -305,6 +316,13 @@ function renderRun() {
     b.addEventListener('click', () => mark(b.dataset.done, 'done')));
   app.querySelectorAll('[data-issue]').forEach(b =>
     b.addEventListener('click', () => { sheet = { stopId:b.dataset.issue, name:b.dataset.name, reason:null, note:'' }; render(); }));
+  app.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', async () => {
+    const box = b.closest('.msg');
+    const reply = box.querySelector('.mreply').value;
+    inbox = inbox.filter(m => m.id !== b.dataset.ack);      // clear it straight away
+    render();
+    try { await api.ackMessage(b.dataset.ack, reply); } catch {}
+  }));
   app.querySelectorAll('[data-load]').forEach(b =>
     b.addEventListener('click', () => markLoaded(b.dataset.load, b.dataset.to === '1')));
   app.querySelectorAll('[data-undo]').forEach(b =>
@@ -407,6 +425,16 @@ window.addEventListener('outbox', async () => {
   }
   render();
 });
+// look for new messages while the run is open. Not a push notification: a
+// phone in a pocket shows nothing until the driver looks at it.
+setInterval(async () => {
+  if (document.hidden || screen !== 'run' || !session.token) return;
+  try {
+    const fresh = await api.inbox();
+    if (fresh.length !== inbox.length) { inbox = fresh; render(); }
+  } catch {}
+}, 60000);
+
 window.addEventListener('online', render);
 window.addEventListener('offline', render);
 

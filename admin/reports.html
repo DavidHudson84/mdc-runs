@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1B4D8F">
+<meta name="theme-color" content="#114C9C">
 <title>Reports — Driver Runs office</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,6 +43,7 @@ const root = document.getElementById('root');
 const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
 
 let business = null, rows = [], from = '', to = '', busy = false, err = '';
+let vans = [], checks = [], drivers = [];
 
 function renderLogin() { mountLogin(root, boot); }
 
@@ -63,6 +64,13 @@ async function load() {
       `run_days!inner(service_date,routes(name),drivers(display_name))` +
       `&run_days.service_date=gte.${from}&run_days.service_date=lte.${to}` +
       `&tickable=eq.true&order=id.asc&limit=20000`);
+    // van servicing and whether the weekly check is actually being done
+    vans = await db('vehicles?is_active=eq.true&select=id,label,rego,odometer,' +
+      'service_due_km,service_due_date,rego_expiry,odometer_at&order=label.asc');
+    checks = await db(`vehicle_logs?service_date=gte.${from}&service_date=lte.${to}` +
+      `&select=driver_id,vehicle_id,service_date,answers,failed,skipped,skip_reason,` +
+      `odometer_start,odometer_end,drivers(display_name),vehicles(label,rego)` +
+      `&order=service_date.asc`);
   } catch (e) { err = e.message; rows = []; }
   busy = false; render();
 }
@@ -107,6 +115,44 @@ function problemCustomers() {
   });
   return [...m.entries()].map(([name, v]) => ({ name, ...v }))
     .sort((a,b) => b.count - a.count);
+}
+
+function weekOf(d) {
+  const t = new Date(d + 'T00:00:00');
+  t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+  return t.toISOString().slice(0, 10);
+}
+
+function checkCompliance() {
+  const weeks = [...new Set(checks.map(c => weekOf(c.service_date)))].sort();
+  const names = [...new Set(checks.map(c => c.drivers && c.drivers.display_name).filter(Boolean))].sort();
+  return { weeks, rows: names.map(n => ({
+    name: n,
+    cells: weeks.map(w => {
+      const mine = checks.filter(c => (c.drivers||{}).display_name === n && weekOf(c.service_date) === w);
+      const done = mine.find(c => Array.isArray(c.answers) && c.answers.length && !c.skipped);
+      const failed = mine.some(c => c.failed);
+      const skipped = mine.some(c => c.skipped);
+      return done ? (failed ? 'fault' : 'done') : skipped ? 'skipped' : mine.length ? 'none' : '';
+    })
+  })) };
+}
+
+function vanRows() {
+  const today = todayISO();
+  const days = d => d ? Math.round((new Date(d) - new Date(today)) / 86400000) : null;
+  return vans.map(v => {
+    const mine = checks.filter(c => c.vehicle_id === v.id);
+    const km = mine.reduce((n, c) =>
+      n + ((c.odometer_end != null && c.odometer_start != null) ? c.odometer_end - c.odometer_start : 0), 0);
+    return { ...v,
+      kmInRange: km,
+      dueKm: (v.service_due_km != null && v.odometer != null) ? v.service_due_km - v.odometer : null,
+      dueDays: days(v.service_due_date),
+      regoDays: days(v.rego_expiry),
+      lastCheck: mine.filter(c => Array.isArray(c.answers) && c.answers.length)
+                     .map(c => c.service_date).sort().pop() || null };
+  });
 }
 
 /* ── CSV ─────────────────────────────────────────────────────────────────── */
@@ -189,6 +235,42 @@ function render() {
             <span class="num">${d.rate === null ? '—' : Math.round(d.rate*100) + '%'}</span></span></td>
         </tr>`).join('') || '<tr><td colspan="6" class="empty">Nothing in this range.</td></tr>'}
         </tbody></table></div>
+    </div>
+
+    <div class="panel">
+      <header><div><h2>Vans</h2>
+        <span class="when">Odometer comes in from the drivers, so servicing keeps itself current.</span></div></header>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Van</th><th>Rego</th><th>Odometer</th><th>Service due</th>
+          <th>Rego expires</th><th>Km in range</th><th>Last weekly check</th></tr></thead>
+        <tbody>${vanRows().map(v => `<tr>
+          <td class="nm">${esc(v.label)}</td>
+          <td>${esc(v.rego)}</td>
+          <td class="num">${v.odometer != null ? v.odometer.toLocaleString('en-AU') : '—'}</td>
+          <td>${v.dueKm != null ? `${v.dueKm.toLocaleString('en-AU')} km` : '—'}
+            ${v.dueKm != null && v.dueKm <= 500 ? `<span class="badge ${v.dueKm < 0 ? 'bad' : 'warn'}">${v.dueKm < 0 ? 'overdue' : 'soon'}</span>` : ''}
+            ${v.service_due_date ? `<div class="dim">${esc(v.service_due_date)}${
+              v.dueDays != null && v.dueDays <= 14 ? ` <span class="badge ${v.dueDays < 0 ? 'bad':'warn'}">${v.dueDays < 0 ? 'overdue' : v.dueDays + ' days'}</span>` : ''}</div>` : ''}</td>
+          <td>${v.rego_expiry ? esc(v.rego_expiry) : '—'}
+            ${v.regoDays != null && v.regoDays <= 30 ? `<span class="badge ${v.regoDays < 0 ? 'bad':'warn'}">${v.regoDays < 0 ? 'expired' : v.regoDays + ' days'}</span>` : ''}</td>
+          <td class="num dim">${v.kmInRange ? v.kmInRange.toLocaleString('en-AU') : '—'}</td>
+          <td class="dim">${v.lastCheck || '<span class="badge bad">never</span>'}</td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">No vans.</td></tr>'}</tbody></table></div>
+    </div>
+
+    <div class="panel">
+      <header><div><h2>Weekly van checks</h2>
+        <span class="when">One column per week. Green done, amber a fault was reported, red skipped.</span></div></header>
+      ${(() => { const c = checkCompliance(); return c.weeks.length ? `<div class="tablewrap"><table>
+        <thead><tr><th>Driver</th>${c.weeks.map(w => `<th>wk ${esc(w.slice(5))}</th>`).join('')}</tr></thead>
+        <tbody>${c.rows.map(r => `<tr><td class="nm">${esc(r.name)}</td>
+          ${r.cells.map(v => `<td>${
+            v === 'done' ? '<span class="badge on" style="background:var(--done-soft);color:var(--done);border-color:var(--done)">done</span>'
+          : v === 'fault' ? '<span class="badge warn">fault</span>'
+          : v === 'skipped' ? '<span class="badge bad">skipped</span>'
+          : v === 'none' ? '<span class="badge bad">no check</span>' : '<span class="dim">—</span>'}</td>`).join('')}
+        </tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty">No van logs in this range.</div>'; })()}
     </div>
 
     <div class="panel">

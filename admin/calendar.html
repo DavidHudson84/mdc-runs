@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1B4D8F">
+<meta name="theme-color" content="#114C9C">
 <title>Calendar — Driver Runs office</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -150,10 +150,13 @@ function periodLabel() {
 
 async function loadMonth() {
   const all = gridDates();
-  days = await db(`run_days?service_date=gte.${iso(all[0])}&service_date=lte.${iso(all[41])}` +
+  // month is 42 cells, week is 7 — take the last one either way rather than
+  // hard-coding 41, which read an undefined date in week view
+  const from = iso(all[0]), to = iso(all[all.length - 1]);
+  days = await db(`run_days?service_date=gte.${from}&service_date=lte.${to}` +
     `&select=id,service_date,status,route_id,routes(name),run_stops(status,tickable)&order=service_date.asc`);
-  exceptions = await db(`calendar_exceptions?exception_date=gte.${iso(all[0])}` +
-    `&exception_date=lte.${iso(all[41])}&select=id,exception_date,route_id,action,label`);
+  exceptions = await db(`calendar_exceptions?exception_date=gte.${from}` +
+    `&exception_date=lte.${to}&select=id,exception_date,route_id,action,label`);
 }
 
 function cellHTML(d) {

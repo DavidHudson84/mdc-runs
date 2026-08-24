@@ -88,6 +88,11 @@ export const api = {
                                  }),
   finish:   (runDayId)        => rpc('driver_finish_run', {
                                    p_token: session.token, p_run_day_id: runDayId
+                                 }),
+  inbox:    ()                => rpc('driver_inbox', { p_token: session.token }),
+  ackMessage: (id, reply)     => rpc('driver_ack_message', {
+                                   p_token: session.token, p_message_id: id,
+                                   p_reply: reply || null
                                  })
 };
 

@@ -217,3 +217,19 @@ body::before{
 }
 :root[data-theme="dark"] body::before{opacity:.06; filter:brightness(0) invert(1)}
 .app, .wrap, .anav{position:relative; z-index:1}
+
+/* Message from the office. Sits above the stops, cannot be missed, and clears
+   as soon as it is acknowledged. */
+.msgs{padding:12px 14px 0; display:flex; flex-direction:column; gap:10px}
+.msg{border:1.5px solid var(--accent-line); background:var(--accent-soft);
+  border-radius:var(--r); padding:12px 13px}
+.msg .mtop{display:flex; justify-content:space-between; align-items:baseline; gap:10px}
+.msg .mfrom{font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--accent)}
+.msg .mwhen{font-family:"Archivo",sans-serif; font-size:11.5px; color:var(--ink-3)}
+.msg p{margin:6px 0 10px; font-size:15px; font-weight:600; line-height:1.4}
+.msg .mreply{width:100%; padding:10px 12px; border:1.5px solid var(--accent-line);
+  border-radius:var(--r); background:var(--surface); font-size:15px}
+.msg .mack{width:100%; margin-top:8px; padding:12px 0; border-radius:var(--r);
+  background:var(--accent); color:var(--accent-ink);
+  font-family:"Archivo",sans-serif; font-size:14.5px; font-weight:700}

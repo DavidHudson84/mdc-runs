@@ -1,0 +1,14 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0009 — messages from the office to a driver
+-- Applied via the Supabase MCP; see git history for full bodies.
+--
+-- IN-APP ONLY. A message appears on the driver's run screen next time they open
+-- or refresh it, and the app re-checks every 60 seconds while it is open. It is
+-- NOT a push notification: a phone in a pocket with the app closed shows
+-- nothing. WhatsApp remains the channel for anything that cannot wait.
+--
+--   driver_messages       body, to one driver or everyone, expires after 7 days
+--   driver_message_reads  acknowledgement and optional reply
+--   driver_inbox()        unread messages for the token's driver
+--   driver_ack_message()  mark read, optionally with a reply
+--   admin_message_status() what the office sees: who read what, and replies

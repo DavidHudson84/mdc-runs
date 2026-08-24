@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1B4D8F">
+<meta name="theme-color" content="#114C9C">
 <title>Today — Driver Runs office</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,7 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, signIn, db, esc, hhmm, clock, longDate, todayISO, nav, wireNav, mountLogin, access }
+import { auth, signIn, db, rpcAdmin, esc, hhmm, clock, longDate, todayISO, nav, wireNav, mountLogin, access }
   from '../assets/admin.js';
 
 const root = document.getElementById('root');
@@ -23,6 +23,7 @@ const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', othe
 let date = new URLSearchParams(location.search).get('date') || todayISO();
 let error = '';
 let poll = null;
+let drivers = [], msgs = [], msgDraft = { to:'', body:'' }, business = null;
 
 /* ── login ───────────────────────────────────────────────────────────────── */
 
@@ -46,7 +47,14 @@ async function loadBoard() {
   const vans = await db(
     `vehicles?is_active=eq.true&select=id,label,rego,odometer,service_due_km,service_due_date,rego_expiry&order=label.asc`);
 
-  return { runs, logs, vans };
+  // Monday of the week the viewed date falls in
+  const d = new Date(date + 'T00:00:00');
+  const monday = new Date(d); monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const wk = monday.toISOString().slice(0, 10);
+  const weekChecks = await db(`vehicle_logs?service_date=gte.${wk}&service_date=lte.${date}` +
+    `&skipped=eq.false&select=driver_id,service_date,answers,failed`);
+
+  return { runs, logs, vans, weekChecks, weekStart: wk };
 }
 
 function issuesFrom(runs) {
@@ -61,6 +69,16 @@ function issuesFrom(runs) {
     });
   }));
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+function checkFlags(d) {
+  const did = new Set((d.weekChecks || [])
+    .filter(l => Array.isArray(l.answers) && l.answers.length)
+    .map(l => l.driver_id));
+  // only chase drivers who are actually rostered on this week
+  const working = new Set((d.runs || []).map(r => r.driver_id).filter(Boolean));
+  return drivers.filter(x => x.is_active && working.has(x.id) && !did.has(x.id))
+                .map(x => `${x.display_name} has not done the weekly van check yet`);
 }
 
 function vanFlags(vans, logs) {
@@ -90,7 +108,7 @@ function vanFlags(vans, logs) {
 
 function renderBoard(d) {
   const issues = issuesFrom(d.runs);
-  const flags = vanFlags(d.vans, d.logs);
+  const flags = [...checkFlags(d), ...vanFlags(d.vans, d.logs)];
 
   root.innerHTML = `
     ${nav('index.html')}
@@ -146,9 +164,44 @@ function renderBoard(d) {
         </div>` : `<div class="empty">No runs generated for ${longDate(date)} yet.<br>
           They build themselves the moment a driver opens the app.</div>`}
       </div>
+
+      <div class="panel">
+        <header><div><h2>Message the drivers</h2>
+          <span class="when">Shows on their run screen next time they look &mdash; not a notification.
+            Use WhatsApp for anything urgent.</span></div></header>
+        <div class="lookup" style="background:var(--surface)">
+          <div><label for="mto">Who</label>
+            <select id="mto"><option value="">Everyone</option>
+              ${drivers.filter(x => x.is_active).map(x =>
+                `<option value="${x.id}" ${msgDraft.to === x.id ? 'selected' : ''}>${esc(x.display_name)}</option>`).join('')}
+            </select></div>
+          <div style="grid-column:span 2"><label for="mbody">Message</label>
+            <input id="mbody" placeholder="Extra pickup at Seddon on your way back"
+                   value="${esc(msgDraft.body)}"></div>
+          <div><button class="btn" id="msend" style="width:100%;padding:11px 0">Send</button></div>
+        </div>
+        ${msgs.length ? `<div class="tablewrap"><table>
+          <thead><tr><th>Sent</th><th>To</th><th>Message</th><th>Seen</th></tr></thead>
+          <tbody>${msgs.slice(0, 12).map(m => `<tr>
+            <td class="dim">${esc(m.created_at.slice(0,10))} ${clock(m.created_at)}</td>
+            <td class="nm">${esc(m.to)}</td>
+            <td>${esc(m.body)}</td>
+            <td class="dim">${(m.seen || []).length
+              ? (m.seen || []).map(x => `${esc(x.driver)} ${clock(x.read_at)}${
+                  x.reply ? ` &mdash; &ldquo;${esc(x.reply)}&rdquo;` : ''}`).join('<br>')
+              : 'not yet'}</td>
+          </tr>`).join('')}</tbody></table></div>` : ''}
+      </div>
     </div>`;
 
   wireNav();
+  const mt = root.querySelector('#mto');
+  if (mt) mt.addEventListener('change', e => { msgDraft.to = e.target.value; });
+  const mb = root.querySelector('#mbody');
+  if (mb) mb.addEventListener('input', e => { msgDraft.body = e.target.value; });
+  const ms = root.querySelector('#msend');
+  if (ms) ms.addEventListener('click', sendMessage);
+
   root.querySelector('#jump').addEventListener('click', () => {
     date = root.querySelector('#date').value || todayISO();
     history.replaceState(null, '', `?date=${date}`);
@@ -156,8 +209,23 @@ function renderBoard(d) {
   });
 }
 
+async function sendMessage() {
+  const body = (msgDraft.body || '').trim();
+  if (!body) return;
+  try {
+    await db('driver_messages', { method:'POST', body: JSON.stringify({
+      business_id: business.id, driver_id: msgDraft.to || null, body }) });
+    msgDraft = { to:'', body:'' };
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
 async function refresh() {
-  try { renderBoard(await loadBoard()); }
+  try {
+    const d = await loadBoard();
+    try { msgs = await rpcAdmin('admin_message_status', { p_business_id: business.id }); } catch {}
+    renderBoard(d);
+  }
   catch (err) {
     if (/Signed out/.test(err.message)) return renderLogin();
     root.innerHTML = `${nav('index.html')}<div class="wrap"><div class="panel">
@@ -166,8 +234,13 @@ async function refresh() {
   }
 }
 
-function boot() {
+async function boot() {
   if (!auth.token) return renderLogin();
+  await access();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    drivers = await db('drivers?select=id,display_name,is_active&order=sort_order.asc');
+  } catch (e) { if (/Signed out/.test(e.message)) return renderLogin(); }
   refresh();
   clearInterval(poll);
   poll = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
