@@ -98,6 +98,7 @@ export function nav(current) {
     ['runs.html', 'Runs'],
     ['calendar.html', 'Calendar'],
     ['customers.html', 'Customers'],
+    ['import.html', 'Import'],
     ['drivers.html', 'Drivers'],
     ['vans.html', 'Vans']
   ];

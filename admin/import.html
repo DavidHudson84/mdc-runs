@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Import customers — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .steps{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:0}
+  .step{padding:20px; border-right:1.5px solid var(--line)}
+  .step:last-child{border-right:0}
+  .step .n{display:inline-grid; place-items:center; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); color:var(--accent-ink); font-family:"Archivo",sans-serif;
+    font-size:12px; font-weight:700; margin-bottom:9px}
+  .step h3{font-size:16px; font-weight:700; margin-bottom:5px}
+  .step p{margin:0 0 12px; font-size:14px; color:var(--ink-2); line-height:1.5}
+  .drop{border:1.5px dashed var(--line-2); border-radius:var(--r); padding:22px; text-align:center;
+    background:var(--surface-2); font-size:14px; color:var(--ink-3)}
+  .drop.over{border-color:var(--accent); background:var(--accent-soft); color:var(--accent)}
+  .drop input{display:none}
+  .tot{display:flex; flex-wrap:wrap; gap:22px; padding:16px 20px; background:var(--surface-2);
+    border-bottom:1.5px solid var(--line)}
+  .tot div{font-family:"Archivo",sans-serif; font-size:12px; font-weight:600; color:var(--ink-3)}
+  .tot b{display:block; font-size:24px; font-weight:700; line-height:1.15; color:var(--ink)}
+  .tot .c b{color:var(--done)} .tot .u b{color:var(--accent)} .tot .p b{color:var(--issue)}
+  .act-create{color:var(--done); font-weight:700}
+  .act-update{color:var(--accent); font-weight:700}
+  .act-unchanged{color:var(--ink-3)}
+  .act-problem{color:var(--issue); font-weight:700}
+  .commitbar{padding:16px 20px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    border-top:1.5px solid var(--line)}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, db, rpcAdmin, esc, nav, wireNav, mountLogin } from '../assets/admin.js';
+
+const root = document.getElementById('root');
+
+// CSV header -> database column. Friendly names, but the raw column names are
+// accepted too, so a file round-tripped through Excel keeps working.
+const COLS = [
+  ['id',              'id'],
+  ['name',            'name'],
+  ['address',         'address_line'],
+  ['suburb',          'suburb'],
+  ['postcode',        'postcode'],
+  ['phone',           'phone'],
+  ['contact',         'contact_name'],
+  ['what_to_collect', 'standing_order'],
+  ['access_notes',    'access_notes'],
+  ['not_before',      'earliest_time'],
+  ['reference',       'external_ref']
+];
+const ALIASES = new Map();
+COLS.forEach(([friendly, col]) => { ALIASES.set(friendly, col); ALIASES.set(col, col); });
+ALIASES.set('address_line', 'address_line');
+ALIASES.set('standing order', 'standing_order');
+ALIASES.set('what to collect', 'standing_order');
+ALIASES.set('access notes', 'access_notes');
+ALIASES.set('not before', 'earliest_time');
+ALIASES.set('contact name', 'contact_name');
+ALIASES.set('external ref', 'external_ref');
+
+let business = null, rows = [], plan = null, fileName = '', err = '', busy = false;
+
+function renderLogin() { mountLogin(root, boot); }
+
+/* ── CSV ─────────────────────────────────────────────────────────────────── */
+// Hand-rolled rather than split(','): addresses and standing orders are full of
+// commas, and Excel quotes them.
+
+function parseCSV(text) {
+  const out = [];
+  let row = [], field = '', q = false;
+  text = text.replace(/^﻿/, '');                    // Excel's byte-order mark
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); out.push(row); row = []; field = ''; }
+    else if (c !== '\r') field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); out.push(row); }
+  return out.filter(r => r.some(v => String(v).trim() !== ''));
+}
+
+function toCSV(records) {
+  const esc1 = v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const head = COLS.map(([f]) => f);
+  const lines = [head.join(',')];
+  records.forEach(r => lines.push(COLS.map(([, col]) =>
+    esc1(col === 'earliest_time' ? (r[col] || '').slice(0,5) : r[col])).join(',')));
+  return lines.join('\r\n');
+}
+
+async function exportCSV() {
+  err = '';
+  try {
+    const cs = await db('customers?archived_at=is.null&select=' +
+      COLS.map(([, c]) => c).join(',') + '&order=name.asc');
+    const blob = new Blob([toCSV(cs)], { type:'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mdc-customers-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) { err = e.message; render(); }
+}
+
+/* ── read a file, then dry run ───────────────────────────────────────────── */
+
+async function readFile(file) {
+  err = ''; plan = null; rows = []; fileName = file.name;
+  const grid = parseCSV(await file.text());
+  if (grid.length < 2) { err = 'That file has no rows under the headings.'; return render(); }
+
+  const heads = grid[0].map(h => ALIASES.get(h.trim().toLowerCase().replace(/\s+/g, '_'))
+                              || ALIASES.get(h.trim().toLowerCase()) || null);
+  if (!heads.includes('name')) {
+    err = 'No "name" column. Export the current list first and edit that file — the headings have to match.';
+    return render();
+  }
+
+  rows = grid.slice(1).map(cells => {
+    const o = {};
+    heads.forEach((col, i) => { if (col) o[col] = (cells[i] ?? '').trim(); });
+    return o;
+  });
+
+  busy = true; render();
+  try { plan = await rpcAdmin('import_customers_plan', { p_business_id: business.id, p_rows: rows }); }
+  catch (e) { err = e.message; }
+  busy = false; render();
+}
+
+async function apply() {
+  if (busy || !plan) return;
+  busy = true; err = ''; render();
+  try {
+    const res = await rpcAdmin('import_customers_apply',
+      { p_business_id: business.id, p_rows: rows, p_filename: fileName });
+    plan = null; rows = [];
+    err = '';
+    busy = false;
+    render();
+    alert(`Done. ${res.created} added, ${res.updated} updated${res.skipped ? ', ' + res.skipped + ' skipped' : ''}.`);
+  } catch (e) { err = e.message; busy = false; render(); }
+}
+
+/* ── view ────────────────────────────────────────────────────────────────── */
+
+function planHTML() {
+  if (!plan) return '';
+  const s = plan.summary;
+  const list = plan.rows || [];
+  const interesting = list.filter(r => r.action !== 'unchanged');
+  return `<div class="panel">
+    <header><div><h2>What this would do</h2>
+      <span class="when">${esc(fileName)} &middot; nothing has been saved yet</span></div></header>
+    <div class="tot">
+      <div class="c"><b class="num">${s.create}</b>added</div>
+      <div class="u"><b class="num">${s.update}</b>updated</div>
+      <div><b class="num">${s.unchanged}</b>unchanged</div>
+      <div class="p"><b class="num">${s.problem}</b>problems</div>
+    </div>
+    ${interesting.length ? `<div class="tablewrap"><table>
+      <thead><tr><th>Row</th><th>Customer</th><th>What happens</th><th>Detail</th></tr></thead>
+      <tbody>
+        ${interesting.slice(0, 300).map(r => `<tr>
+          <td class="num dim">${r.row}</td>
+          <td class="nm">${esc(r.name || '—')}</td>
+          <td class="act-${r.action}">${
+            r.action === 'create' ? 'Added as new' :
+            r.action === 'update' ? 'Updated' :
+            r.action === 'problem' ? 'Skipped' : r.action}</td>
+          <td class="dim">${
+            r.action === 'problem' ? esc(r.why || '') :
+            r.action === 'update'
+              ? `matched on ${esc(r.matched_on)}${(r.changes||[]).length ? ' &middot; changing ' + esc((r.changes||[]).join(', ')) : ''}`
+              : ''}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      ${interesting.length > 300 ? `<p class="when" style="padding:12px 14px">Showing the first 300 of ${interesting.length}.</p>` : ''}
+    </div>` : '<div class="empty">Every row matches what is already there. Nothing to change.</div>'}
+    <div class="commitbar">
+      <button class="btn" id="commit" ${busy || (s.create + s.update === 0) ? 'disabled style="opacity:.5"' : ''}>
+        ${busy ? 'Working&hellip;' : `Apply ${s.create + s.update} change${s.create + s.update === 1 ? '' : 's'}`}
+      </button>
+      <button class="ghostbtn" id="cancel" style="width:auto;padding:11px 18px">Cancel</button>
+      <span class="when">Applied in one go &mdash; if any row fails, none of them are saved.</span>
+    </div>
+  </div>`;
+}
+
+function render() {
+  root.innerHTML = `${nav('import.html')}<div class="wrap">
+    <div class="panel">
+      <header><div><h2>Bulk customers</h2>
+        <span class="when">Export, edit the whole list in Excel, bring it back.</span></div></header>
+      ${err ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}
+      <div class="steps">
+        <div class="step">
+          <span class="n">1</span>
+          <h3>Download what&rsquo;s there</h3>
+          <p>Every current customer, with an <b>id</b> column. Leave that column alone &mdash;
+             it&rsquo;s how a row finds its way back to the right customer.</p>
+          <button class="btn" id="export">Download CSV</button>
+        </div>
+        <div class="step">
+          <span class="n">2</span>
+          <h3>Edit it</h3>
+          <p>Change anything. Add new customers as new rows and leave their <b>id</b> blank.
+             Deleting a row here does <b>not</b> delete the customer &mdash; archive those on
+             the Customers page.</p>
+        </div>
+        <div class="step">
+          <span class="n">3</span>
+          <h3>Bring it back</h3>
+          <p>You&rsquo;ll see exactly what would change before anything is saved.</p>
+          <label class="drop" id="drop">
+            ${busy ? 'Reading&hellip;' : 'Drop the CSV here, or click to choose'}
+            <input type="file" id="file" accept=".csv,text/csv">
+          </label>
+        </div>
+      </div>
+    </div>
+    ${planHTML()}
+  </div>`;
+
+  wireNav();
+  root.querySelector('#export').addEventListener('click', exportCSV);
+
+  const drop = root.querySelector('#drop');
+  const file = root.querySelector('#file');
+  file.addEventListener('change', e => { if (e.target.files[0]) readFile(e.target.files[0]); });
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f) readFile(f);
+  });
+
+  const c = root.querySelector('#commit');
+  if (c) c.addEventListener('click', apply);
+  const x = root.querySelector('#cancel');
+  if (x) x.addEventListener('click', () => { plan = null; rows = []; err = ''; render(); });
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    render();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('import.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

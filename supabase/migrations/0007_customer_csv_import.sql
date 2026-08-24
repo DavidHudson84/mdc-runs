@@ -1,0 +1,24 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0007 — bulk customer CSV import
+-- Applied to the live database via the Supabase MCP; see git history for the
+-- full function bodies. Three functions:
+--
+--   import_match_customer   resolves a CSV row to an existing customer, in
+--                           confidence order: our own id, then the spreadsheet
+--                           reference, then name + suburb (flagged as a guess)
+--   import_customers_plan   read-only dry run: says what WOULD happen
+--   import_customers_apply  does it, in one transaction, and records the batch
+--
+-- Two bugs found while testing, both of which would have been damaging on a
+-- real import of the 79 customers:
+--
+--   * A row with no id gave NULL from p_row->>'id'. NULL ~ '...' is NULL and
+--     NOT NULL is still NULL, so the reference and name branches never fired
+--     and EVERY row fell through to "create" -- duplicating the whole list.
+--     Fixed by coalescing to '' so the comparison is a real boolean.
+--
+--   * A column absent from the file was treated as an empty value and blanked
+--     the field. Deleting a column in Excel would have wiped it for every
+--     customer. Both plan and apply now only touch keys the row actually
+--     carries; a column that IS present but empty still clears the field,
+--     which is a deliberate act.
