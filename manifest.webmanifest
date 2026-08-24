@@ -1,6 +1,6 @@
 {
-  "name": "Turnaround \u2014 Master Dry Cleaners",
-  "short_name": "Turnaround",
+  "name": "Same Day \u2014 Master Dry Cleaners",
+  "short_name": "Same Day",
   "description": "Daily delivery runs for Master Dry Cleaners drivers.",
   "start_url": "./index.html",
   "scope": "./",

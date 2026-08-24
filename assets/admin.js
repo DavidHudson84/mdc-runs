@@ -136,7 +136,7 @@ export function nav(current) {
   ].filter(([, , adminOnly]) => admin || !adminOnly);
   return `<nav class="anav">
     <a class="brand" href="index.html">
-      <img src="../assets/logo.png" alt="Master Dry Cleaners"><span>Turnaround</span></a>
+      <img src="../assets/logo.png" alt="Master Dry Cleaners"><span>Same Day</span></a>
     <div class="tabs">
       ${items.map(([href, label]) =>
         `<a href="${href}" ${href === current ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
