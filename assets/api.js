@@ -57,12 +57,19 @@ export async function rpc(fn, args = {}) {
 
 export const api = {
   drivers:  ()                => rpc('list_drivers_for_picker', { p_business_slug: BUSINESS_SLUG }),
-  login:    (driverId, pin)   => rpc('driver_login', {
-                                   p_business_slug: BUSINESS_SLUG,
-                                   p_driver_id: driverId,
-                                   p_pin: pin,
-                                   p_user_agent: navigator.userAgent.slice(0, 200)
-                                 }),
+  // Returns {ok:false, message} for a wrong or locked-out PIN rather than
+  // throwing: the failed-attempt record and the lockout must COMMIT, and an
+  // exception would roll them back.
+  login:    async (driverId, pin) => {
+              const r = await rpc('driver_login', {
+                p_business_slug: BUSINESS_SLUG,
+                p_driver_id: driverId,
+                p_pin: pin,
+                p_user_agent: navigator.userAgent.slice(0, 200)
+              });
+              if (!r || r.ok !== true) throw new ApiError((r && r.message) || 'Sign in failed', 'PIN');
+              return r;
+            },
   logout:   ()                => rpc('driver_logout', { p_token: session.token }),
   vanOptions: ()              => rpc('driver_vehicle_options', { p_token: session.token }),
   startVan: (opts)            => rpc('driver_start_vehicle_log', {

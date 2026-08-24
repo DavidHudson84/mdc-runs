@@ -1,6 +1,6 @@
 // Bump BUILD on every deploy. The service worker caches by it, and a stale
 // cached version is the classic failure mode of GitHub Pages hosting.
-export const BUILD = '2026.08.24.3';
+export const BUILD = '2026.08.24.4';
 
 export const SUPABASE_URL = 'https://gfvybedbfeguhizzgrow.supabase.co';
 

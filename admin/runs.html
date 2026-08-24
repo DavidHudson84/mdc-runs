@@ -65,7 +65,7 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, db, esc, hhmm, nav, wireNav, mountLogin } from '../assets/admin.js';
+import { auth, db, rpcAdmin, esc, hhmm, nav, wireNav, mountLogin } from '../assets/admin.js';
 
 const root = document.getElementById('root');
 const DAYS = [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat']];
@@ -337,11 +337,12 @@ function nextWeekday(iso) {
 }
 
 async function removeStop(id) {
-  // Effective-dated, never deleted: the pattern stays auditable and any day
-  // already generated keeps its rows.
+  // Goes through admin_remove_route_stop: a stop that has never been driven is
+  // deleted outright, one that has is effective-dated so the days already
+  // generated keep their rows. Setting active_to here in the client used to
+  // break on a same-day add, because yesterday falls before active_from.
   try {
-    await db(`route_stops?id=eq.${id}`, { method:'PATCH',
-      body: JSON.stringify({ active_to: new Date(Date.now() - 86400000).toISOString().slice(0,10) }) });
+    await rpcAdmin('admin_remove_route_stop', { p_route_stop_id: id });
     await reload(); render();
   } catch (e) { err = e.message; render(); }
 }
