@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Vans — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, signIn, db, esc, clock, longDate, todayISO, nav, wireNav, mountLogin }
+  from '../assets/admin.js';
+
+const root = document.getElementById('root');
+let vans = [];
+let business = null;
+let lookup = { date: todayISO(), rego: '', result: null, searched: false };
+let error = '';
+
+function renderLogin() { mountLogin(root, boot); }
+
+/* ── who was driving ─────────────────────────────────────────────────────── */
+// The job someone actually does with an infringement notice in hand: a date and
+// a rego go in, a driver comes out. vehicle_logs is deliberately NOT unique on
+// (vehicle, date) — two drivers sharing a van in a day is real, and both rows
+// are the truth, so this returns every match with its time window.
+
+async function runLookup() {
+  const van = vans.find(v => v.rego === lookup.rego);
+  if (!van) { lookup.result = []; lookup.searched = true; return render(); }
+
+  const logs = await db(
+    `vehicle_logs?vehicle_id=eq.${van.id}&service_date=eq.${lookup.date}` +
+    `&select=id,started_at,ended_at,odometer_start,odometer_end,skipped,skip_reason,` +
+    `drivers(id,display_name,phone)&order=started_at.asc`);
+
+  for (const l of logs) {
+    l.stops = l.drivers ? await db(
+      `run_stops?select=customer_name,label,marked_at,status,run_days!inner(service_date)` +
+      `&run_days.service_date=eq.${lookup.date}` +
+      `&marked_by_driver_id=eq.${l.drivers.id}` +
+      `&marked_at=not.is.null&order=marked_at.asc`) : [];
+  }
+  lookup.result = logs;
+  lookup.searched = true;
+  render();
+}
+
+function lookupHTML() {
+  return `<div class="panel">
+    <header>
+      <div><h2>Who was driving?</h2>
+        <span class="when">A date and a rego in, a driver out. For infringement notices.</span></div>
+    </header>
+    <div class="lookup">
+      <div><label for="ldate">Date on the notice</label>
+        <input type="date" id="ldate" value="${lookup.date}"></div>
+      <div><label for="lrego">Rego</label>
+        <select id="lrego">
+          <option value="">Choose a van&hellip;</option>
+          ${vans.map(v => `<option value="${esc(v.rego)}" ${v.rego === lookup.rego ? 'selected' : ''}>${esc(v.rego)} &mdash; ${esc(v.label)}</option>`).join('')}
+        </select></div>
+      <div><button class="btn" id="dolookup" style="width:100%;padding:11px 0">Look it up</button></div>
+    </div>
+    ${lookup.searched ? `<div class="result">
+      ${(lookup.result || []).length ? lookup.result.map(l => {
+        const km = (l.odometer_start != null && l.odometer_end != null)
+          ? (l.odometer_end - l.odometer_start) : null;
+        return `<div class="hit">
+          <h4>${esc(l.drivers ? l.drivers.display_name : 'Unknown driver')}</h4>
+          <p>Signed the van out at <b>${clock(l.started_at)}</b>${
+            l.ended_at ? ` and back in at <b>${clock(l.ended_at)}</b>` : ' — never signed back in'}.</p>
+          <p>${l.odometer_start != null ? 'Odometer ' + l.odometer_start.toLocaleString('en-AU') : 'No opening odometer'}${
+            l.odometer_end != null ? ' → ' + l.odometer_end.toLocaleString('en-AU') : ''}${
+            km != null ? ` &middot; ${km.toLocaleString('en-AU')} km` : ''}.</p>
+          ${l.skipped ? `<p><span class="badge warn">check skipped</span>${esc(l.skip_reason || '')}</p>` : ''}
+          ${l.stops && l.stops.length ? `<p style="margin-top:9px"><b>Where they were:</b></p>
+            <p>${l.stops.map(s => `${clock(s.marked_at)} ${esc(s.customer_name || s.label)}`).join(' &middot; ')}</p>`
+            : '<p>No stops ticked that day.</p>'}
+        </div>`;
+      }).join('') : `<p class="none">Nobody signed that van out on ${longDate(lookup.date)}.</p>`}
+    </div>` : ''}
+  </div>`;
+}
+
+/* ── add / edit a van ────────────────────────────────────────────────────── */
+// Whatever is active and has a rego here is exactly what drivers see on their
+// van picker at the start of the run. Nothing else feeds that list.
+
+let vanDraft = null;
+let vanErr = '';
+
+const VF = [
+  ['label', 'Name', 'text', 'Van 3'],
+  ['rego', 'Registration', 'text', '1AB2CD'],
+  ['make_model', 'Make and model', 'text', 'Ford Transit'],
+  ['odometer', 'Current odometer', 'number', '84210'],
+  ['service_due_km', 'Service due at (km)', 'number', '88000'],
+  ['service_due_date', 'Service due by', 'date', ''],
+  ['rego_expiry', 'Rego expires', 'date', '']
+];
+
+function vanFormHTML() {
+  if (!vanDraft) return '';
+  const isNew = !vanDraft.id;
+  return `<div class="panel">
+    <header><h2>${isNew ? 'Add a van' : 'Edit ' + esc(vanDraft.label || 'van')}</h2>
+      <span class="when">Active vans with a rego are what drivers pick from.</span></header>
+    ${vanErr ? `<p class="err" style="margin:14px 20px 0">${esc(vanErr)}</p>` : ''}
+    <div class="lookup" style="background:var(--surface)">
+      ${VF.map(([k, l, t, ph]) => `<div>
+        <label for="v_${k}">${l}</label>
+        <input id="v_${k}" data-vk="${k}" type="${t}" placeholder="${ph}"
+               value="${esc(vanDraft[k] ?? '')}">
+      </div>`).join('')}
+    </div>
+    <div class="lookup" style="background:var(--surface);border-top:0;padding-top:0">
+      <div><button class="btn" id="vsave" style="width:100%;padding:11px 0">
+        ${isNew ? 'Add van' : 'Save changes'}</button></div>
+      <div><button class="ghostbtn" id="vcancel">Cancel</button></div>
+      ${isNew ? '' : `<div><button class="ghostbtn" id="vretire">
+        ${vanDraft.is_active === false ? 'Put back in service' : 'Retire this van'}</button></div>`}
+    </div>
+  </div>`;
+}
+
+function wireVanForm() {
+  if (!vanDraft) return;
+  root.querySelectorAll('[data-vk]').forEach(i =>
+    i.addEventListener('input', e => { vanDraft[e.target.dataset.vk] = e.target.value; }));
+  root.querySelector('#vsave').addEventListener('click', saveVan);
+  root.querySelector('#vcancel').addEventListener('click', () => { vanDraft = null; vanErr = ''; render(); });
+  const r = root.querySelector('#vretire');
+  if (r) r.addEventListener('click', retireVan);
+}
+
+function cleanVan(v) {
+  const out = {};
+  ['label', 'rego', 'make_model'].forEach(k => {
+    const s = (v[k] ?? '').toString().trim();
+    out[k] = s === '' ? null : s;
+  });
+  ['odometer', 'service_due_km'].forEach(k => {
+    const s = (v[k] ?? '').toString().trim();
+    out[k] = s === '' ? null : Number(s);
+  });
+  ['service_due_date', 'rego_expiry'].forEach(k => {
+    const s = (v[k] ?? '').toString().trim();
+    out[k] = s === '' ? null : s;
+  });
+  if (out.rego) out.rego = out.rego.toUpperCase().replace(/\s+/g, '');
+  return out;
+}
+
+async function saveVan() {
+  const p = cleanVan(vanDraft);
+  if (!p.label) { vanErr = 'Give the van a name so drivers recognise it.'; return render(); }
+  if (!p.rego)  { vanErr = 'A rego is what ties a fine back to a driver. It is required.'; return render(); }
+  vanErr = '';
+  try {
+    if (vanDraft.id) {
+      await db(`vehicles?id=eq.${vanDraft.id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    } else {
+      p.business_id = business.id;
+      if (p.odometer != null) p.odometer_at = new Date().toISOString();
+      await db('vehicles', { method: 'POST', body: JSON.stringify(p) });
+    }
+    vanDraft = null;
+    await reloadVans();
+    render();
+  } catch (err) {
+    vanErr = /duplicate key/.test(err.message)
+      ? 'A van with that rego is already on the list.' : err.message;
+    render();
+  }
+}
+
+async function retireVan() {
+  const back = vanDraft.is_active === false;
+  try {
+    await db(`vehicles?id=eq.${vanDraft.id}`, {
+      method: 'PATCH', body: JSON.stringify({ is_active: back })
+    });
+    vanDraft = null;
+    await reloadVans();
+    render();
+  } catch (err) { vanErr = err.message; render(); }
+}
+
+async function reloadVans() {
+  vans = await db('vehicles?select=id,label,rego,make_model,odometer,service_due_km,service_due_date,rego_expiry,is_active&order=is_active.desc,label.asc');
+}
+
+/* ── register ────────────────────────────────────────────────────────────── */
+
+function registerHTML() {
+  const today = todayISO();
+  const days = d => d ? Math.round((new Date(d) - new Date(today)) / 86400000) : null;
+  return `<div class="panel">
+    <header>
+      <div><h2>Van register</h2>
+        <span class="when">Odometer comes in from the drivers, so this stays current on its own. Click a row to edit.</span></div>
+      <button class="btn" id="vnew">+ Add van</button>
+    </header>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th>Van</th><th>Rego</th><th>Make &amp; model</th><th>Odometer</th>
+        <th>Service due</th><th>Rego expires</th>
+      </tr></thead>
+      <tbody>
+        ${vans.map(v => {
+          const sKm = (v.service_due_km != null && v.odometer != null) ? v.service_due_km - v.odometer : null;
+          const sD = days(v.service_due_date);
+          const rD = days(v.rego_expiry);
+          return `<tr data-van="${v.id}" style="cursor:pointer">
+            <td class="nm">${esc(v.label)}${v.is_active === false ? ' <span class="badge">retired</span>' : ''}</td>
+            <td>${esc(v.rego)}</td>
+            <td class="dim">${esc(v.make_model || '—')}</td>
+            <td class="num">${v.odometer != null ? v.odometer.toLocaleString('en-AU') + ' km' : '—'}</td>
+            <td>${v.service_due_km != null ? `${v.service_due_km.toLocaleString('en-AU')} km` : ''}
+              ${sKm != null && sKm <= 500 ? `<span class="badge ${sKm < 0 ? 'bad' : 'warn'}">${sKm < 0 ? 'overdue' : 'in ' + sKm + ' km'}</span>` : ''}
+              ${v.service_due_date ? `<div class="dim">${esc(v.service_due_date)}${sD != null && sD <= 14 ? ` <span class="badge ${sD < 0 ? 'bad' : 'warn'}">${sD < 0 ? 'overdue' : sD + ' days'}</span>` : ''}</div>` : ''}
+            </td>
+            <td>${v.rego_expiry ? esc(v.rego_expiry) : '—'}
+              ${rD != null && rD <= 30 ? `<span class="badge ${rD < 0 ? 'bad' : 'warn'}">${rD < 0 ? 'expired' : rD + ' days'}</span>` : ''}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="6" class="empty">No vans yet.</td></tr>'}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function render() {
+  root.innerHTML = `${nav('vans.html')}<div class="wrap">${vanFormHTML()}${lookupHTML()}${registerHTML()}</div>`;
+  wireNav();
+  wireVanForm();
+
+  root.querySelector('#ldate').addEventListener('change', e => { lookup.date = e.target.value; });
+  root.querySelector('#lrego').addEventListener('change', e => { lookup.rego = e.target.value; });
+  root.querySelector('#dolookup').addEventListener('click', () => {
+    if (!lookup.rego) return;
+    runLookup().catch(err => alert(err.message));
+  });
+
+  root.querySelector('#vnew').addEventListener('click', () => {
+    vanDraft = {}; vanErr = ''; render();
+    const f = root.querySelector('#v_label'); if (f) f.focus();
+  });
+  root.querySelectorAll('[data-van]').forEach(tr => tr.addEventListener('click', () => {
+    vanDraft = { ...vans.find(v => v.id === tr.dataset.van) };
+    // date inputs want YYYY-MM-DD, which is what Postgres already returns
+    vanErr = ''; render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    await reloadVans();
+    render();
+  } catch (err) {
+    if (/Signed out/.test(err.message)) return renderLogin();
+    root.innerHTML = `${nav('vans.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(err.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

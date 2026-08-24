@@ -1,0 +1,89 @@
+/* Admin — desktop. Shares the token set in app.css; this file only adds the
+   office-side chrome and layouts. Load app.css first. */
+
+body.admin{background:var(--ground)}
+.wrap{max-width:1180px; margin:0 auto; padding:0 20px 64px}
+
+.anav{
+  display:flex; align-items:center; gap:12px 26px; flex-wrap:wrap;
+  padding:14px 20px; max-width:1180px; margin:0 auto;
+}
+.anav .brand{font-family:"Archivo",sans-serif; font-size:19px; font-weight:700; letter-spacing:-.02em; color:var(--ink); text-decoration:none}
+.anav .tabs{display:flex; gap:20px; margin-left:8px}
+.anav .tabs a{
+  font-family:"Archivo",sans-serif; font-size:14.5px; font-weight:600; color:var(--ink-3);
+  text-decoration:none; padding:6px 0; border-bottom:2.5px solid transparent;
+}
+.anav .tabs a:hover{color:var(--ink-2)}
+.anav .tabs a[aria-current="page"]{color:var(--accent); border-bottom-color:var(--accent)}
+.anav .signout{margin-left:auto; font-family:"Archivo",sans-serif; font-size:13px; font-weight:600; color:var(--ink-3); text-decoration:underline}
+
+.panel{background:var(--surface); border:1.5px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); margin-bottom:24px; overflow:hidden}
+.panel > header{padding:15px 20px; border-bottom:1.5px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline; justify-content:space-between}
+.panel h2{font-size:19px; font-weight:700; letter-spacing:-.018em}
+.when{font-size:13px; color:var(--ink-3); font-family:"Archivo",sans-serif; font-weight:600}
+.datectl{display:flex; gap:8px; align-items:center}
+.datectl input{padding:7px 10px; border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface-2); font-size:14px}
+
+.alert{padding:15px 20px; background:var(--issue-soft); border-bottom:1.5px solid var(--issue-line)}
+.alert h3{font-size:11.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--issue); margin:0 0 10px}
+.alert ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px}
+.alert li{display:flex; flex-wrap:wrap; gap:3px 10px; align-items:baseline; font-size:14.5px}
+.alert b{font-family:"Archivo",sans-serif; font-weight:700}
+.alert .rsn{color:var(--issue); font-weight:600; font-size:13.5px}
+.alert .t{margin-left:auto; color:var(--ink-2); font-size:12.5px; font-family:"Archivo",sans-serif; font-weight:600}
+.alert .nt{width:100%; color:var(--ink-2); font-size:13.5px}
+
+.amber{padding:13px 20px; background:var(--flag-soft); border-bottom:1.5px solid var(--flag-line); color:var(--flag); font-size:14px; font-weight:600}
+.amber ul{margin:6px 0 0; padding-left:18px}
+
+.board{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.col{padding:16px 18px 18px; border-right:1.5px solid var(--line)}
+.col:last-child{border-right:0}
+.col h3{font-size:15.5px; font-weight:700; letter-spacing:-.012em}
+.col .drv{font-size:13.5px; color:var(--ink-2); margin:1px 0 12px}
+.cnt{display:flex; gap:16px; margin-top:11px}
+.cnt div{font-size:12.5px; color:var(--ink-3); font-family:"Archivo",sans-serif; font-weight:600}
+.cnt b{display:block; font-size:21px; font-weight:700; color:var(--ink); line-height:1.15}
+.cnt .g b{color:var(--done)}
+.cnt .r b{color:var(--issue)}
+.cnt .zero b{color:var(--ink-3)}
+.last{margin-top:12px; font-size:12.5px; color:var(--ink-3)}
+
+table{width:100%; border-collapse:collapse; font-size:14.5px}
+.tablewrap{overflow-x:auto}
+th{text-align:left; font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); padding:10px 14px; border-bottom:1.5px solid var(--line); background:var(--surface-2); white-space:nowrap}
+td{padding:11px 14px; border-bottom:1.5px solid var(--line); vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.nm{font-family:"Archivo",sans-serif; font-weight:700}
+td.dim{color:var(--ink-2)}
+.badge{display:inline-block; font-family:"Archivo",sans-serif; font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:2px 7px; border-radius:3px; border:1.5px solid var(--line-2); background:var(--surface-3); color:var(--ink-2); margin-right:4px}
+.badge.on{background:var(--accent-soft); color:var(--accent); border-color:var(--accent-line)}
+.badge.warn{background:var(--flag-soft); color:var(--flag); border-color:var(--flag-line)}
+.badge.bad{background:var(--issue-soft); color:var(--issue); border-color:var(--issue-line)}
+
+.searchbar{padding:13px 18px; border-bottom:1.5px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+.searchbar input{flex:1; min-width:200px; padding:9px 12px; border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface-2); font-size:14.5px}
+.searchbar .count{font-family:"Archivo",sans-serif; font-size:12.5px; font-weight:600; color:var(--ink-3)}
+
+.login-card{max-width:380px; margin:12vh auto; background:var(--surface); border:1.5px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); padding:26px 24px 24px}
+.login-card h1{font-size:22px; font-weight:700; margin:14px 0 4px; letter-spacing:-.02em}
+.login-card label{display:block; font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin:16px 0 5px}
+.login-card input{width:100%; padding:12px; border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface-2); font-size:16px}
+
+.lookup{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:16px 20px; border-bottom:1.5px solid var(--line); background:var(--surface-2); align-items:end}
+.lookup label{display:block; font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+.lookup input, .lookup select{width:100%; padding:10px 12px; border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface); font-size:15px}
+.result{padding:18px 20px}
+.result .hit{border:1.5px solid var(--accent-line); background:var(--accent-soft); border-radius:var(--r); padding:15px 17px; margin-bottom:12px}
+.result .hit h4{font-family:"Archivo",sans-serif; font-size:17px; font-weight:700; margin-bottom:4px}
+.result .hit p{margin:2px 0; font-size:14.5px; color:var(--ink-2)}
+.result .none{color:var(--ink-3); font-size:14.5px}
+
+.empty{padding:40px 20px; text-align:center; color:var(--ink-3); font-size:14.5px}
+.primary{width:100%; margin-top:22px; padding:14px 0; border-radius:var(--r); background:var(--accent); color:var(--accent-ink); font-family:"Archivo",sans-serif; font-size:15.5px; font-weight:700}
+.btn{padding:9px 15px; border-radius:var(--r); background:var(--accent); color:var(--accent-ink); font-family:"Archivo",sans-serif; font-size:13.5px; font-weight:700}
+.ghostbtn{width:100%; padding:11px 0; border:1.5px solid var(--line-2); border-radius:var(--r); font-family:"Archivo",sans-serif; font-size:13.5px; font-weight:600; color:var(--ink-2)}
+.ghostbtn:hover{border-color:var(--ink-3); color:var(--ink)}
+tr[data-van]:hover td{background:var(--surface-2)}
+.err{background:var(--issue-soft); border:1.5px solid var(--issue-line); color:var(--issue); border-radius:var(--r); padding:10px 12px; font-size:14.5px; font-weight:600}

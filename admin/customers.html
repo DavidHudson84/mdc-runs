@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Customers — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .custwrap{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,380px)}
+  @media (max-width:940px){.custwrap{grid-template-columns:1fr}}
+  .custleft{border-right:1.5px solid var(--line); min-width:0}
+  .custlist{max-height:560px; overflow-y:auto}
+  .custrow{display:block; width:100%; text-align:left; padding:11px 18px; border-bottom:1.5px solid var(--line); background:none}
+  .custrow:hover{background:var(--surface-2)}
+  .custrow[aria-current="true"]{background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent)}
+  .custrow .cn{font-family:"Archivo",sans-serif; font-size:15px; font-weight:700}
+  .custrow .ca{font-size:13px; color:var(--ink-2); margin-top:1px}
+  .custrow .cd{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px}
+  .detail{padding:18px 20px 24px; background:var(--surface-2)}
+  .detail h3{font-size:17px; font-weight:700; letter-spacing:-.015em}
+  .detail .sub{font-size:13px; color:var(--ink-3); margin:2px 0 14px}
+  .fld{margin-bottom:11px}
+  .fld label{display:block; font-family:"Archivo",sans-serif; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:3px}
+  .fld input, .fld textarea{width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:var(--r); background:var(--surface); font-size:14.5px; font-family:inherit}
+  .fld textarea{min-height:56px; resize:vertical}
+  .fld.amber input, .fld.amber textarea{background:var(--flag-soft); border-color:var(--flag-line); color:var(--flag); font-weight:600}
+  .appears{margin-top:16px; padding-top:14px; border-top:1.5px solid var(--line)}
+  .appears h4{font-family:"Archivo",sans-serif; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:8px}
+  .assigned{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px}
+  .abadge{display:inline-flex; align-items:center; gap:6px; background:var(--accent-soft); border:1.5px solid var(--accent-line); color:var(--accent); border-radius:20px; padding:4px 6px 4px 11px; font-family:"Archivo",sans-serif; font-size:12px; font-weight:700}
+  .abadge button{width:17px; height:17px; border-radius:50%; background:var(--accent); color:var(--accent-ink); font-size:11px; line-height:1; display:grid; place-items:center}
+  .assignrow{display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+  .assignrow span{font-size:13px; color:var(--ink-2); margin-right:3px}
+  .adday{border:1.5px solid var(--line-2); background:var(--surface); border-radius:4px; padding:4px 9px; font-family:"Archivo",sans-serif; font-size:12px; font-weight:700; color:var(--ink-2)}
+  .adday:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
+  .saverow{display:flex; gap:8px; margin-top:14px}
+  .saverow .btn{flex:1; text-align:center}
+  .ghost{flex:1; padding:9px 15px; border:1.5px solid var(--line-2); border-radius:var(--r); font-family:"Archivo",sans-serif; font-size:13.5px; font-weight:600}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, signIn, db, esc, nav, wireNav, mountLogin } from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const DAYS = [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat'],[7,'Sun']];
+
+let customers = [], stops = [], routes = [], business = null;
+let q = '', sel = null, draft = null, error = '', saving = false;
+
+function renderLogin() { mountLogin(root, boot); }
+
+const daysFor = id => DAYS.filter(([w]) => stops.some(s => s.customer_id === id && s.weekday === w && !s.active_to));
+const filtered = () => !q ? customers
+  : customers.filter(c => (c.name + ' ' + (c.address_line||'') + ' ' + (c.suburb||'')).toLowerCase().includes(q));
+
+function listHTML() {
+  const rows = filtered();
+  return `<div class="custleft">
+    <div class="searchbar">
+      <input id="q" type="search" placeholder="Search name, address or suburb&hellip;" value="${esc(q)}">
+      <span class="count">${rows.length} of ${customers.length}</span>
+    </div>
+    <div class="custlist">
+      ${rows.map(c => {
+        const ds = daysFor(c.id);
+        return `<button class="custrow" data-id="${c.id}" aria-current="${sel === c.id}">
+          <div class="cn">${esc(c.name)}</div>
+          <div class="ca">${esc([c.address_line, c.suburb].filter(Boolean).join(', ') || 'No address')}</div>
+          <div class="cd">${ds.length
+            ? ds.map(([,l]) => `<span class="badge on">${l}</span>`).join('')
+            : '<span class="badge">not assigned</span>'}</div>
+        </button>`;
+      }).join('') || `<div class="empty">Nothing matches &ldquo;${esc(q)}&rdquo;.</div>`}
+    </div>
+  </div>`;
+}
+
+const F = [
+  ['name','Name'], ['address_line','Address'], ['suburb','Suburb'], ['postcode','Postcode'],
+  ['phone','Phone'], ['contact_name','Contact name']
+];
+
+function detailHTML() {
+  if (!draft) return `<div class="detail"><div class="empty">Pick a customer to see their full record,<br>and which days they sit on.</div></div>`;
+  const isNew = !draft.id;
+  const ds = isNew ? [] : daysFor(draft.id);
+  return `<div class="detail">
+    <h3>${isNew ? 'New customer' : esc(draft.name)}</h3>
+    <p class="sub">${isNew ? 'Saved to the master list first. Days come after.' : 'They exist here first, then get assigned to days.'}</p>
+    ${error ? `<p class="err">${esc(error)}</p>` : ''}
+    ${F.map(([k,l]) => `<div class="fld"><label for="f_${k}">${l}</label>
+      <input id="f_${k}" data-k="${k}" value="${esc(draft[k] || '')}"></div>`).join('')}
+    <div class="fld"><label for="f_so">Standing order &mdash; what to collect and drop</label>
+      <textarea id="f_so" data-k="standing_order">${esc(draft.standing_order || '')}</textarea></div>
+    <div class="fld amber"><label for="f_an">Access notes</label>
+      <textarea id="f_an" data-k="access_notes">${esc(draft.access_notes || '')}</textarea></div>
+    <div class="fld"><label for="f_et">Not before (time)</label>
+      <input id="f_et" data-k="earliest_time" type="time" value="${esc((draft.earliest_time||'').slice(0,5))}"></div>
+
+    <div class="saverow">
+      <button class="ghost" id="cancel">Cancel</button>
+      <button class="btn" id="save">${saving ? 'Saving&hellip;' : (isNew ? 'Create customer' : 'Save changes')}</button>
+    </div>
+
+    ${isNew ? '' : `<div class="appears">
+      <h4>Appears on &mdash; ${esc(routes[0] ? routes[0].name : 'route')}</h4>
+      <div class="assigned">${ds.length
+        ? ds.map(([w,l]) => `<span class="abadge">${l}<button data-un="${w}" title="Take off ${l}">&times;</button></span>`).join('')
+        : '<span class="sub" style="margin:0">Not on any day yet.</span>'}</div>
+      <div class="assignrow"><span>Assign to:</span>
+        ${DAYS.slice(0,6).map(([w,l]) => `<button class="adday" data-as="${w}">${l}</button>`).join('')}</div>
+    </div>`}
+  </div>`;
+}
+
+function render() {
+  root.innerHTML = `${nav('customers.html')}<div class="wrap"><div class="panel">
+    <header>
+      <div><h2>Customers</h2>
+        <span class="when">The master list. A customer exists here first, then gets assigned to days.</span></div>
+      <button class="btn" id="new">+ New customer</button>
+    </header>
+    <div class="custwrap">${listHTML()}${detailHTML()}</div>
+  </div></div>`;
+
+  wireNav();
+  root.querySelector('#q').addEventListener('input', e => {
+    q = e.target.value.trim().toLowerCase();
+    const box = root.querySelector('.custlist');
+    box.outerHTML = listHTML().match(/<div class="custlist">[\s\S]*<\/div>\s*<\/div>/)[0].replace(/<\/div>\s*$/, '');
+    wireList();
+  });
+  root.querySelector('#new').addEventListener('click', () => { sel = null; draft = {}; error=''; render(); });
+  wireList();
+  wireDetail();
+}
+
+function wireList() {
+  root.querySelectorAll('.custrow').forEach(b => b.addEventListener('click', () => {
+    sel = b.dataset.id;
+    draft = { ...customers.find(c => c.id === sel) };
+    error = ''; render();
+  }));
+}
+
+function wireDetail() {
+  if (!draft) return;
+  root.querySelectorAll('[data-k]').forEach(i =>
+    i.addEventListener('input', e => { draft[e.target.dataset.k] = e.target.value; }));
+  const c = root.querySelector('#cancel');
+  if (c) c.addEventListener('click', () => { draft = sel ? { ...customers.find(x => x.id === sel) } : null; error=''; render(); });
+  const s = root.querySelector('#save');
+  if (s) s.addEventListener('click', save);
+  root.querySelectorAll('[data-as]').forEach(b => b.addEventListener('click', () => assign(+b.dataset.as)));
+  root.querySelectorAll('[data-un]').forEach(b => b.addEventListener('click', () => unassign(+b.dataset.un)));
+}
+
+/* ── writes ──────────────────────────────────────────────────────────────── */
+
+function clean(o) {
+  const out = {};
+  ['name','address_line','suburb','postcode','phone','contact_name','standing_order','access_notes','earliest_time']
+    .forEach(k => { const v = (o[k] ?? '').toString().trim(); out[k] = v === '' ? null : v; });
+  return out;
+}
+
+async function save() {
+  if (!draft.name || !draft.name.trim()) { error = 'A customer needs a name.'; return render(); }
+  saving = true; error = ''; render();
+  try {
+    const payload = clean(draft);
+    if (draft.id) {
+      await db(`customers?id=eq.${draft.id}`, { method:'PATCH', body: JSON.stringify(payload) });
+    } else {
+      payload.business_id = business.id;
+      const [row] = await db('customers', {
+        method:'POST', headers:{ Prefer:'return=representation' }, body: JSON.stringify(payload)
+      });
+      sel = row.id;
+    }
+    await reload();
+    draft = { ...customers.find(c => c.id === sel) };
+  } catch (err) { error = err.message; }
+  saving = false; render();
+}
+
+async function assign(weekday) {
+  const route = routes[0];
+  if (!route) { error = 'No route set up yet.'; return render(); }
+  const taken = stops.filter(s => s.customer_id === draft.id && s.weekday === weekday && !s.active_to);
+  try {
+    await db('route_stops', { method:'POST', body: JSON.stringify({
+      business_id: business.id, route_id: route.id, customer_id: draft.id,
+      kind:'customer', weekday, visit_no: taken.length + 1,
+      seq: (Math.max(0, ...stops.filter(s => s.weekday === weekday).map(s => s.seq)) + 10),
+      frequency:'weekly'
+    })});
+    await reload(); render();
+  } catch (err) { error = err.message; render(); }
+}
+
+async function unassign(weekday) {
+  // Effective-dated, not deleted: the pattern stays auditable and any day
+  // already generated is untouched.
+  const ids = stops.filter(s => s.customer_id === draft.id && s.weekday === weekday && !s.active_to).map(s => s.id);
+  try {
+    for (const id of ids) {
+      await db(`route_stops?id=eq.${id}`, { method:'PATCH',
+        body: JSON.stringify({ active_to: new Date(Date.now() - 86400000).toISOString().slice(0,10) }) });
+    }
+    await reload(); render();
+  } catch (err) { error = err.message; render(); }
+}
+
+async function reload() {
+  customers = await db('customers?archived_at=is.null&select=*&order=name.asc');
+  stops = await db('route_stops?kind=eq.customer&select=id,customer_id,weekday,seq,visit_no,active_to');
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    routes = await db('routes?is_active=eq.true&select=id,name&order=sort_order.asc');
+    await reload();
+    render();
+  } catch (err) {
+    if (/Signed out/.test(err.message)) return renderLogin();
+    root.innerHTML = `${nav('customers.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(err.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
