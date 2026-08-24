@@ -1,6 +1,6 @@
 {
-  "name": "Same Day \u2014 Master Dry Cleaners",
-  "short_name": "Same Day",
+  "name": "SameDay \u2014 Master Dry Cleaners",
+  "short_name": "SameDay",
   "description": "Daily delivery runs for Master Dry Cleaners drivers.",
   "start_url": "./index.html",
   "scope": "./",

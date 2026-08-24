@@ -1,6 +1,6 @@
-# CLAUDE.md — Same Day (MDC driver runs)
+# CLAUDE.md — SameDay (MDC driver runs)
 
-Working title: **Same Day** — same-day service is what the shops promise, and the runs go out on the same day each week.
+Working title: **SameDay** — same-day service is what the shops promise, and the runs go out on the same day each week.
 
 Driver run sheets for Master Dry Cleaners. A phone app where a driver opens their run
 for the day and ticks stops off, and an admin site where the office maintains drivers,

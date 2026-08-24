@@ -1,4 +1,4 @@
-# Same Day
+# SameDay
 
 Driver run sheets for Master Dry Cleaners.
 
