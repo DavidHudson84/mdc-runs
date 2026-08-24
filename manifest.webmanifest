@@ -1,13 +1,13 @@
 {
-  "name": "MDC Driver Runs",
-  "short_name": "Runs",
+  "name": "Milk Run \u2014 Master Dry Cleaners",
+  "short_name": "Milk Run",
   "description": "Daily delivery runs for Master Dry Cleaners drivers.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#E7EBEF",
-  "theme_color": "#1B4D8F",
+  "theme_color": "#114C9C",
   "icons": [
     {
       "src": "assets/icon-192.png",

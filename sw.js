@@ -1,12 +1,13 @@
 // Version-stamped cache. Bump BUILD in assets/config.js on every deploy —
 // a stale cached shell is the classic failure mode of GitHub Pages hosting.
-const BUILD = '2026.08.24.9';
+const BUILD = '2026.08.25.1';
 const CACHE = 'mdc-runs-v' + BUILD;
 
 const SHELL = [
   './', './index.html', './run.html',
   './assets/app.css', './assets/api.js', './assets/config.js',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './assets/logo.png', './assets/mark.png', './assets/favicon.png'
 ];
 
 self.addEventListener('install', e => {

@@ -8,7 +8,14 @@ body.admin{background:var(--ground)}
   display:flex; align-items:center; gap:12px 26px; flex-wrap:wrap;
   padding:14px 20px; max-width:1180px; margin:0 auto;
 }
-.anav .brand{font-family:"Archivo",sans-serif; font-size:19px; font-weight:700; letter-spacing:-.02em; color:var(--ink); text-decoration:none}
+.anav .brand{display:flex; align-items:center; gap:11px; text-decoration:none; color:var(--ink)}
+.anav .brand img{height:26px; width:auto}
+.anav .brand span{font-family:"Archivo",sans-serif; font-size:19px; font-weight:700; letter-spacing:-.02em;
+  padding-left:11px; border-left:1.5px solid var(--line-2)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .anav .brand img{filter:brightness(0) invert(1) opacity(.92)}
+}
+:root[data-theme="dark"] .anav .brand img{filter:brightness(0) invert(1) opacity(.92)}
 .anav .tabs{display:flex; gap:20px; margin-left:8px}
 .anav .tabs a{
   font-family:"Archivo",sans-serif; font-size:14.5px; font-weight:600; color:var(--ink-3);
@@ -87,3 +94,7 @@ td.dim{color:var(--ink-2)}
 .ghostbtn:hover{border-color:var(--ink-3); color:var(--ink)}
 tr[data-van]:hover td{background:var(--surface-2)}
 .err{background:var(--issue-soft); border:1.5px solid var(--issue-line); color:var(--issue); border-radius:var(--r); padding:10px 12px; font-size:14.5px; font-weight:600}
+
+
+/* watermark path differs for pages inside /admin/ */
+body.admin::before{background-image:url('mark.png')}

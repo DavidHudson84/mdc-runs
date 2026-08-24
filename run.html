@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1B4D8F">
-<title>Today&rsquo;s run — Master Dry Cleaners</title>
+<meta name="theme-color" content="#114C9C">
+<title>Milk Run — today</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
@@ -29,7 +30,7 @@ let screen = 'loading';   // loading | van | run
 let stale = null;         // timestamp when showing a cached run
 let error = '';
 let sheet = null;         // { stopId, name, reason, note }
-let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{} };
+let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{}, showAll:false };
 
 // ?date=YYYY-MM-DD — for a driver finishing a late run after midnight, and for
 // the office checking a day without impersonating anyone.
@@ -41,6 +42,10 @@ const local = new Map();
 
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const hhmm = t => t ? String(t).slice(0,5) : '';
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
 const clock = iso => new Date(iso).toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit' }).toLowerCase().replace(' ','');
 
 /* ── load ────────────────────────────────────────────────────────────────── */
@@ -72,22 +77,34 @@ async function load() {
 
 function renderVan() {
   const vans = vanOpts.vehicles;
-  const items = vanOpts.check_items;
+  const items = vanOpts.needs_check ? vanOpts.check_items : [];
+  const lastId = vanOpts.last_vehicle_id;
+  // The van they had last time is nearly always the van they have today, so it
+  // is the only one shown until they say otherwise.
+  const primary = vans.filter(v => v.id === lastId);
+  const others  = vans.filter(v => v.id !== lastId);
+  const showAll = vanForm.showAll || !primary.length;
+  const shown   = showAll ? vans : primary;
+
+  const vanCard = v => `
+    <button class="van-btn" data-id="${v.id}" aria-pressed="${vanForm.vehicleId === v.id}">
+      <span>
+        <b>${esc(v.label)} &middot; ${esc(v.rego)}</b>
+        <span>${v.odometer ? v.odometer.toLocaleString('en-AU') + ' km last recorded' : 'No odometer on file'}</span>
+        ${v.service_soon ? '<span class="warn">Service due soon</span>' : ''}
+        ${v.rego_soon ? '<span class="warn">Rego expiring soon</span>' : ''}
+      </span>
+    </button>`;
+
   app.innerHTML = `
     <div class="van">
-      <span class="mark">Before you go</span>
-      <h2>Which van today?</h2>
+      <img class="logo" src="assets/logo.png" alt="Master Dry Cleaners">
+      <span class="mark">${greeting()}, ${esc(session.driver ? session.driver.name : '')}</span>
+      <h2>${primary.length && !showAll ? 'Same van today?' : 'Which van today?'}</h2>
       <div class="vans">
-        ${vans.map(v => `
-          <button class="van-btn" data-id="${v.id}" aria-pressed="${vanForm.vehicleId === v.id}">
-            <span>
-              <b>${esc(v.label)} &middot; ${esc(v.rego)}</b>
-              <span>${v.odometer ? v.odometer.toLocaleString('en-AU') + ' km last recorded' : 'No odometer on file'}</span>
-              ${v.service_soon ? '<span class="warn">Service due soon</span>' : ''}
-              ${v.rego_soon ? '<span class="warn">Rego expiring soon</span>' : ''}
-            </span>
-          </button>`).join('') || '<p class="sub">No vans set up yet. Ask the office.</p>'}
+        ${shown.map(vanCard).join('') || '<p class="sub">No vans set up yet. Ask the office.</p>'}
       </div>
+      ${!showAll && others.length ? `<button class="linkish" id="othervan">I&rsquo;m using another van</button>` : ''}
 
       <div class="field">
         <label for="odo">Odometer reading</label>
@@ -95,47 +112,59 @@ function renderVan() {
                placeholder="e.g. 84210" value="${esc(vanForm.odometer)}">
       </div>
 
-      ${items.length ? `<div class="field"><label>Quick check</label><div class="checks">
+      ${items.length ? `<div class="field">
+        <label>Weekly check &mdash; first run of the week</label>
+        <div class="checks">
         ${items.map(i => {
-          const v = vanForm.answers[i.id];
-          return `<div class="check" data-item="${i.id}">
+          const okIsYes = (i.ok_answer || 'yes') === 'yes';
+          const v = vanForm.answers[i.id];          // stored as ok true/false
+          const yesPressed = v === undefined ? false : (okIsYes ? v === true : v === false);
+          const noPressed  = v === undefined ? false : (okIsYes ? v === false : v === true);
+          return `<div class="check" data-item="${i.id}" data-okyes="${okIsYes}">
             <div class="row">
               <span class="lbl">${esc(i.label)}</span>
               <span class="yn">
-                <button data-v="yes" aria-pressed="${v === true}">Yes</button>
-                <button data-v="no"  aria-pressed="${v === false}">No</button>
+                <button data-v="yes" aria-pressed="${yesPressed}">Yes</button>
+                <button data-v="no"  aria-pressed="${noPressed}">No</button>
               </span>
             </div>
             ${v === false ? `<input class="note" placeholder="What&rsquo;s wrong? (required)" value="${esc(vanForm.notes[i.id] || '')}">` : ''}
           </div>`;
         }).join('')}
-      </div></div>` : ''}
+      </div></div>` : `<p class="sub" style="margin-top:16px">
+        Weekly check already done &mdash; just the van and the odometer today.</p>`}
 
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
       <button class="primary" id="start">Start the run</button>
-      <button class="linkish" id="skip">Can&rsquo;t do the check right now</button>
+      ${items.length ? `<button class="linkish" id="skip">Can&rsquo;t do the check right now</button>` : ''}
       <p class="foot">v${BUILD}</p>
     </div>`;
 
   app.querySelectorAll('.van-btn').forEach(b => b.addEventListener('click', () => {
     vanForm.vehicleId = b.dataset.id; error = ''; render();
   }));
+  const ov = app.querySelector('#othervan');
+  if (ov) ov.addEventListener('click', () => { vanForm.showAll = true; render(); });
   const odo = app.querySelector('#odo');
   if (odo) odo.addEventListener('input', e => { vanForm.odometer = e.target.value.replace(/[^0-9]/g, ''); });
   app.querySelectorAll('.yn button').forEach(b => b.addEventListener('click', () => {
-    const id = b.closest('.check').dataset.item;
-    vanForm.answers[id] = b.dataset.v === 'yes';
+    const box = b.closest('.check');
+    const okIsYes = box.dataset.okyes === 'true';
+    const saidYes = b.dataset.v === 'yes';
+    // "Any new damage?" -> yes is the bad answer, so ok is the inverse
+    vanForm.answers[box.dataset.item] = okIsYes ? saidYes : !saidYes;
     render();
   }));
   app.querySelectorAll('.check .note').forEach(inp => inp.addEventListener('input', e => {
     vanForm.notes[e.target.closest('.check').dataset.item] = e.target.value;
   }));
   app.querySelector('#start').addEventListener('click', startRun);
-  app.querySelector('#skip').addEventListener('click', skipCheck);
+  const sk = app.querySelector('#skip');
+  if (sk) sk.addEventListener('click', skipCheck);
 }
 
 function buildAnswers() {
-  return vanOpts.check_items
+  return (vanOpts.needs_check ? vanOpts.check_items : [])
     .filter(i => vanForm.answers[i.id] !== undefined)
     .map(i => ({ item_id:i.id, label:i.label, ok:vanForm.answers[i.id], note:vanForm.notes[i.id] || null }));
 }
@@ -238,7 +267,7 @@ function renderRun() {
   app.innerHTML = `
     <header class="runhead">
       <div class="runtop">
-        <span class="who">${esc(data.driver.name)}</span>
+        <span class="who"><img class="logomark" src="assets/mark.png" alt="">${greeting()}, ${esc(data.driver.name)}</span>
         <span class="sync ${cls}"><span class="led"></span>${txt}</span>
       </div>
       <div class="runmeta">

@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1B4D8F">
-<title>Driver Runs — Master Dry Cleaners</title>
+<meta name="theme-color" content="#114C9C">
+<title>Milk Run — Master Dry Cleaners</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
@@ -25,6 +26,10 @@ let pin = '';
 let busy = false;
 let error = '';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 
 // Already signed in? Straight to the run — most mornings this is the whole flow.
@@ -42,7 +47,8 @@ async function boot() {
 function renderPicker() {
   app.innerHTML = `
     <div class="pad-screen">
-      <span class="mark">Master Dry Cleaners</span>
+      <img class="logo" src="assets/logo.png" alt="Master Dry Cleaners">
+      <span class="mark">${greeting()}</span>
       <h2>Who&rsquo;s driving?</h2>
       <p class="sub">${new Date().toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' })}</p>
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
