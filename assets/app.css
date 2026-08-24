@@ -1,0 +1,176 @@
+/* MDC Driver Runs — one stylesheet, mobile first.
+   Workwear register: cool grey-blue neutrals, a laundry-marker blue accent,
+   and semantic green/amber kept strictly for status. */
+
+:root{
+  --ground:#E7EBEF; --surface:#FFFFFF; --surface-2:#F2F5F8; --surface-3:#E9EEF2;
+  --ink:#0F1A24; --ink-2:#42535F; --ink-3:#71838F;
+  --line:#D2DAE1; --line-2:#BFCAD3;
+  --accent:#1B4D8F; --accent-ink:#FFFFFF; --accent-soft:#E2ECF8; --accent-line:#A9C4E4;
+  --done:#1B6E45; --done-ink:#FFFFFF; --done-soft:#DEF0E6;
+  --issue:#A8460B; --issue-ink:#FFFFFF; --issue-soft:#FAE7D8; --issue-line:#E3B187;
+  --flag:#7E5A0E; --flag-soft:#FAF1D8; --flag-line:#E0C173;
+  --shadow:0 1px 2px rgba(15,26,36,.08), 0 8px 24px -12px rgba(15,26,36,.18);
+  --r:6px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1118; --surface:#141F29; --surface-2:#1B2831; --surface-3:#22303B;
+    --ink:#E9EFF4; --ink-2:#A2B3C0; --ink-3:#7A8C9A;
+    --line:#26343F; --line-2:#33444F;
+    --accent:#66A3E2; --accent-ink:#0A1118; --accent-soft:#15263A; --accent-line:#2C4A66;
+    --done:#5CC191; --done-ink:#08150E; --done-soft:#11291F;
+    --issue:#E68A4E; --issue-ink:#1A0D05; --issue-soft:#2A1A10; --issue-line:#6A3D1C;
+    --flag:#E3BF6E; --flag-soft:#252009; --flag-line:#4E4120;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1118; --surface:#141F29; --surface-2:#1B2831; --surface-3:#22303B;
+  --ink:#E9EFF4; --ink-2:#A2B3C0; --ink-3:#7A8C9A;
+  --line:#26343F; --line-2:#33444F;
+  --accent:#66A3E2; --accent-ink:#0A1118; --accent-soft:#15263A; --accent-line:#2C4A66;
+  --done:#5CC191; --done-ink:#08150E; --done-soft:#11291F;
+  --issue:#E68A4E; --issue-ink:#1A0D05; --issue-soft:#2A1A10; --issue-line:#6A3D1C;
+  --flag:#E3BF6E; --flag-soft:#252009; --flag-line:#4E4120;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+}
+h1,h2,h3,h4{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance}
+button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
+input{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.num{font-variant-numeric:tabular-nums}
+[hidden]{display:none !important}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
+
+.app{max-width:560px; margin:0 auto; min-height:100%; background:var(--surface); display:flex; flex-direction:column}
+
+/* ── login ───────────────────────────────────────────────────────────────── */
+.pad-screen{padding:30px 22px 24px; display:flex; flex-direction:column; flex:1}
+.mark{font-family:"Archivo",sans-serif; font-weight:700; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent)}
+.pad-screen h2{font-size:25px; font-weight:600; margin:24px 0 4px; letter-spacing:-.018em}
+.sub{color:var(--ink-3); font-size:14px; margin:0 0 22px}
+.names{display:flex; flex-direction:column; gap:9px}
+.name-btn{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:var(--surface-2); border:1.5px solid var(--line); border-radius:var(--r);
+  padding:15px; font-size:17px; font-weight:600;
+}
+.name-btn:hover{border-color:var(--accent-line); background:var(--accent-soft)}
+.initials{width:34px; height:34px; flex:none; border-radius:50%; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; font-family:"Archivo",sans-serif; font-size:12.5px; font-weight:700}
+.back{font-size:13.5px; font-weight:600; color:var(--ink-3); align-self:flex-start; padding:4px 0}
+.back:hover{color:var(--accent)}
+.dots{display:flex; gap:13px; justify-content:center; margin:28px 0 22px}
+.dot{width:14px; height:14px; border-radius:50%; border:2px solid var(--line-2)}
+.dot.on{background:var(--accent); border-color:var(--accent)}
+.keys{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:auto}
+.key{background:var(--surface-2); border:1.5px solid var(--line); border-radius:var(--r); padding:16px 0; font-family:"Archivo",sans-serif; font-size:22px; font-weight:600}
+.key:hover{background:var(--accent-soft); border-color:var(--accent-line)}
+.key.ghost{background:none; border-color:transparent; font-size:13.5px; color:var(--ink-3)}
+.err{background:var(--issue-soft); border:1.5px solid var(--issue-line); color:var(--issue); border-radius:var(--r); padding:10px 12px; font-size:14.5px; font-weight:600; margin:14px 0 0}
+
+/* ── run header ──────────────────────────────────────────────────────────── */
+.runhead{padding:12px 15px 13px; border-bottom:1.5px solid var(--line); background:var(--surface); position:sticky; top:0; z-index:2}
+.runtop{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.who{font-family:"Archivo",sans-serif; font-size:15.5px; font-weight:700}
+.sync{display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-3); font-family:"Archivo",sans-serif; white-space:nowrap}
+.led{width:8px; height:8px; border-radius:50%; background:var(--done); flex:none}
+.sync.off .led{background:var(--ink-3)}
+.sync.queued .led{background:var(--flag)}
+.runmeta{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-top:3px}
+.date{font-size:13px; color:var(--ink-2)}
+.pill{font-family:"Archivo",sans-serif; font-size:12px; font-weight:700; background:var(--ink); color:var(--ground); padding:3px 9px; border-radius:20px; white-space:nowrap}
+.bar{height:4px; background:var(--line-2); border-radius:2px; margin-top:9px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--done); transition:width .28s ease}
+
+/* ── stops ───────────────────────────────────────────────────────────────── */
+.stops{padding-bottom:96px}
+.routehead{padding:11px 14px; background:var(--surface-2); border-bottom:1.5px solid var(--line); font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between}
+.stop{display:grid; grid-template-columns:34px 1fr; border-bottom:1.5px solid var(--line)}
+.rail{display:flex; flex-direction:column; align-items:center; padding:14px 0 0; gap:5px; border-right:1.5px solid var(--line); background:var(--surface-2)}
+.seq{font-family:"Archivo",sans-serif; font-size:12px; font-weight:700; color:var(--ink-3)}
+.tick{width:15px; height:15px; border-radius:50%; border:2px solid var(--line-2)}
+.body{padding:13px 14px 14px; min-width:0}
+.cust{font-family:"Archivo",sans-serif; font-size:16px; font-weight:700; line-height:1.25; letter-spacing:-.012em}
+.addr{font-size:13.5px; color:var(--ink-2); margin-top:2px; line-height:1.35}
+.order{font-size:14.5px; font-weight:500; margin-top:8px; line-height:1.35}
+.tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px}
+.tag{font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:3px 7px; border-radius:3px; border:1.5px solid}
+.tag.time{color:var(--accent); background:var(--accent-soft); border-color:var(--accent-line)}
+.access{display:flex; gap:8px; margin-top:9px; padding:8px 10px; border-radius:var(--r); background:var(--flag-soft); border:1.5px solid var(--flag-line); font-size:13px; line-height:1.35; color:var(--flag); font-weight:600}
+.links{display:flex; flex-wrap:wrap; gap:14px; margin-top:10px}
+.links a{font-family:"Archivo",sans-serif; font-size:12.5px; font-weight:600; color:var(--accent); text-decoration:none; border-bottom:1.5px solid var(--accent-line); padding-bottom:1px}
+.acts{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px}
+.act{padding:14px 0; border-radius:var(--r); font-family:"Archivo",sans-serif; font-size:14.5px; font-weight:700; border:1.5px solid; transition:transform .08s}
+.act:active{transform:scale(.98)}
+.act.done{background:var(--done); color:var(--done-ink); border-color:var(--done)}
+.act.issue{background:var(--surface); color:var(--issue); border-color:var(--issue-line)}
+
+/* markers: a direction, not a stop */
+.stop.marker .rail{background:var(--accent-soft)}
+.stop.marker .tick{border-style:dashed; border-color:var(--accent-line)}
+.stop.marker .cust{color:var(--accent); font-size:14.5px}
+
+.stop.settled .body{padding-top:11px; padding-bottom:11px}
+.stop.settled .cust{font-size:14.5px}
+.stop.settled .rail{background:var(--done-soft)}
+.stop.settled.is-issue .rail{background:var(--issue-soft)}
+.stop.settled .tick{background:var(--done); border-color:var(--done); border-style:solid}
+.stop.settled.is-issue .tick{background:var(--issue); border-color:var(--issue)}
+.settledrow{display:flex; align-items:center; gap:10px; justify-content:space-between; margin-top:5px}
+.stamp-time{font-family:"Archivo",sans-serif; font-size:12px; font-weight:700; color:var(--done)}
+.is-issue .stamp-time{color:var(--issue)}
+.undo{font-family:"Archivo",sans-serif; font-size:12px; font-weight:600; color:var(--ink-3); text-decoration:underline; white-space:nowrap}
+.issnote{font-size:12.5px; color:var(--issue); margin-top:4px; font-weight:500}
+.empty{padding:44px 24px; text-align:center; color:var(--ink-3); font-size:15px}
+.empty strong{display:block; font-family:"Archivo",sans-serif; font-size:18px; color:var(--ink); margin-bottom:5px}
+
+.finish{position:fixed; left:12px; right:12px; bottom:12px; max-width:536px; margin:0 auto; padding:16px 0; border-radius:var(--r); background:var(--accent); color:var(--accent-ink); font-family:"Archivo",sans-serif; font-size:15px; font-weight:700; box-shadow:var(--shadow); text-align:center; z-index:3}
+
+/* ── sheet ───────────────────────────────────────────────────────────────── */
+.sheet-bg{position:fixed; inset:0; background:rgba(8,14,20,.55); display:grid; align-items:end; z-index:10}
+.sheet{background:var(--surface); border-radius:16px 16px 0 0; padding:20px 18px calc(18px + env(safe-area-inset-bottom)); max-width:560px; margin:0 auto; width:100%}
+.sheet h3{font-size:17px; font-weight:700}
+.sheet .for{font-size:13px; color:var(--ink-3); margin:2px 0 16px}
+.opts{display:flex; flex-direction:column; gap:8px}
+.opt{text-align:left; padding:15px; border:1.5px solid var(--line); border-radius:var(--r); background:var(--surface-2); font-size:15.5px; font-weight:600}
+.opt[aria-pressed="true"]{border-color:var(--issue); background:var(--issue-soft); color:var(--issue)}
+.sheet input{width:100%; margin-top:11px; padding:13px; border:1.5px solid var(--line); border-radius:var(--r); background:var(--surface-2); font-size:16px}
+.sheetacts{display:grid; grid-template-columns:1fr 1.4fr; gap:9px; margin-top:14px}
+.btn-ghost{padding:14px 0; border:1.5px solid var(--line-2); border-radius:var(--r); font-family:"Archivo",sans-serif; font-weight:600; font-size:14.5px}
+.btn-solid{padding:14px 0; border-radius:var(--r); background:var(--issue); color:var(--issue-ink); font-family:"Archivo",sans-serif; font-weight:700; font-size:14.5px}
+
+/* ── van check ───────────────────────────────────────────────────────────── */
+.van{padding:22px 18px 28px}
+.van h2{font-size:22px; font-weight:600; letter-spacing:-.015em}
+.vans{display:flex; flex-direction:column; gap:9px; margin:16px 0 6px}
+.van-btn{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface-2); border:1.5px solid var(--line); border-radius:var(--r); padding:14px 15px}
+.van-btn[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft)}
+.van-btn b{font-family:"Archivo",sans-serif; font-size:16px; font-weight:700; display:block}
+.van-btn span{font-size:13px; color:var(--ink-2)}
+.van-btn .warn{display:block; margin-top:4px; font-size:12px; font-weight:700; color:var(--flag)}
+.field{margin-top:18px}
+.field label{display:block; font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:5px}
+.field input{width:100%; padding:14px; border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface-2); font-size:19px; font-family:"Archivo",sans-serif; font-weight:600; font-variant-numeric:tabular-nums}
+.checks{display:flex; flex-direction:column; gap:8px; margin-top:10px}
+.check{border:1.5px solid var(--line); border-radius:var(--r); background:var(--surface-2); padding:11px 13px}
+.check .row{display:flex; align-items:center; gap:10px; justify-content:space-between}
+.check .lbl{font-size:15px; font-weight:600}
+.yn{display:flex; gap:6px; flex:none}
+.yn button{padding:7px 14px; border:1.5px solid var(--line-2); border-radius:20px; font-family:"Archivo",sans-serif; font-size:13px; font-weight:700; color:var(--ink-3)}
+.yn button[aria-pressed="true"][data-v="yes"]{background:var(--done); border-color:var(--done); color:var(--done-ink)}
+.yn button[aria-pressed="true"][data-v="no"]{background:var(--issue); border-color:var(--issue); color:var(--issue-ink)}
+.check input{width:100%; margin-top:9px; padding:10px 12px; border:1.5px solid var(--issue-line); border-radius:var(--r); background:var(--surface); font-size:15px}
+.primary{width:100%; margin-top:20px; padding:16px 0; border-radius:var(--r); background:var(--accent); color:var(--accent-ink); font-family:"Archivo",sans-serif; font-size:16px; font-weight:700}
+.linkish{display:block; width:100%; text-align:center; margin-top:12px; font-size:14px; font-weight:600; color:var(--ink-3); text-decoration:underline; padding:6px}
+
+.foot{padding:16px; text-align:center; color:var(--ink-3); font-size:11.5px; font-family:"Archivo",sans-serif}

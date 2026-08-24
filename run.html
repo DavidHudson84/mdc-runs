@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B4D8F">
+<title>Today&rsquo;s run — Master Dry Cleaners</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<main class="app" id="app"></main>
+
+<script type="module">
+import { api, session, queueAction, queueLength, drain, cacheRun, readCachedRun, ApiError } from './assets/api.js';
+import { BUILD } from './assets/config.js';
+
+if (!session.token) location.replace('index.html');
+
+const app = document.getElementById('app');
+const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
+
+let data = null;          // last driver_today payload
+let vanOpts = null;       // driver_vehicle_options payload
+let screen = 'loading';   // loading | van | run
+let stale = null;         // timestamp when showing a cached run
+let error = '';
+let sheet = null;         // { stopId, name, reason, note }
+let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{} };
+
+// ?date=YYYY-MM-DD — for a driver finishing a late run after midnight, and for
+// the office checking a day without impersonating anyone.
+const forcedDate = (new URLSearchParams(location.search).get('date') || '').match(/^\d{4}-\d{2}-\d{2}$/)
+  ? new URLSearchParams(location.search).get('date') : null;
+
+// Optimistic overrides, applied over server data until a refetch confirms them
+const local = new Map();
+
+const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const hhmm = t => t ? String(t).slice(0,5) : '';
+const clock = iso => new Date(iso).toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit' }).toLowerCase().replace(' ','');
+
+/* ── load ────────────────────────────────────────────────────────────────── */
+
+async function load() {
+  try {
+    data = await api.today(forcedDate);
+    cacheRun(data);
+    stale = null;
+    // The pre-start check belongs to today only — never gate a past or future
+    // day behind a van you are not about to drive.
+    if (!data.vehicle_log && !forcedDate) {
+      vanOpts = await api.vanOptions();
+      vanForm.vehicleId = vanOpts.last_vehicle_id || (vanOpts.vehicles[0] && vanOpts.vehicles[0].id) || null;
+      screen = 'van';
+    } else {
+      screen = 'run';
+    }
+  } catch (err) {
+    if (err instanceof ApiError && err.code === '28000') return location.replace('index.html');
+    const cached = readCachedRun();
+    if (cached) { data = cached.payload; stale = cached.at; screen = 'run'; }
+    else { error = navigator.onLine ? err.message : 'No signal, and nothing saved on this phone yet.'; }
+  }
+  render();
+}
+
+/* ── van check ───────────────────────────────────────────────────────────── */
+
+function renderVan() {
+  const vans = vanOpts.vehicles;
+  const items = vanOpts.check_items;
+  app.innerHTML = `
+    <div class="van">
+      <span class="mark">Before you go</span>
+      <h2>Which van today?</h2>
+      <div class="vans">
+        ${vans.map(v => `
+          <button class="van-btn" data-id="${v.id}" aria-pressed="${vanForm.vehicleId === v.id}">
+            <span>
+              <b>${esc(v.label)} &middot; ${esc(v.rego)}</b>
+              <span>${v.odometer ? v.odometer.toLocaleString('en-AU') + ' km last recorded' : 'No odometer on file'}</span>
+              ${v.service_soon ? '<span class="warn">Service due soon</span>' : ''}
+              ${v.rego_soon ? '<span class="warn">Rego expiring soon</span>' : ''}
+            </span>
+          </button>`).join('') || '<p class="sub">No vans set up yet. Ask the office.</p>'}
+      </div>
+
+      <div class="field">
+        <label for="odo">Odometer reading</label>
+        <input id="odo" type="text" inputmode="numeric" pattern="[0-9]*"
+               placeholder="e.g. 84210" value="${esc(vanForm.odometer)}">
+      </div>
+
+      ${items.length ? `<div class="field"><label>Quick check</label><div class="checks">
+        ${items.map(i => {
+          const v = vanForm.answers[i.id];
+          return `<div class="check" data-item="${i.id}">
+            <div class="row">
+              <span class="lbl">${esc(i.label)}</span>
+              <span class="yn">
+                <button data-v="yes" aria-pressed="${v === true}">Yes</button>
+                <button data-v="no"  aria-pressed="${v === false}">No</button>
+              </span>
+            </div>
+            ${v === false ? `<input class="note" placeholder="What&rsquo;s wrong? (required)" value="${esc(vanForm.notes[i.id] || '')}">` : ''}
+          </div>`;
+        }).join('')}
+      </div></div>` : ''}
+
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+      <button class="primary" id="start">Start the run</button>
+      <button class="linkish" id="skip">Can&rsquo;t do the check right now</button>
+      <p class="foot">v${BUILD}</p>
+    </div>`;
+
+  app.querySelectorAll('.van-btn').forEach(b => b.addEventListener('click', () => {
+    vanForm.vehicleId = b.dataset.id; error = ''; render();
+  }));
+  const odo = app.querySelector('#odo');
+  if (odo) odo.addEventListener('input', e => { vanForm.odometer = e.target.value.replace(/[^0-9]/g, ''); });
+  app.querySelectorAll('.yn button').forEach(b => b.addEventListener('click', () => {
+    const id = b.closest('.check').dataset.item;
+    vanForm.answers[id] = b.dataset.v === 'yes';
+    render();
+  }));
+  app.querySelectorAll('.check .note').forEach(inp => inp.addEventListener('input', e => {
+    vanForm.notes[e.target.closest('.check').dataset.item] = e.target.value;
+  }));
+  app.querySelector('#start').addEventListener('click', startRun);
+  app.querySelector('#skip').addEventListener('click', skipCheck);
+}
+
+function buildAnswers() {
+  return vanOpts.check_items
+    .filter(i => vanForm.answers[i.id] !== undefined)
+    .map(i => ({ item_id:i.id, label:i.label, ok:vanForm.answers[i.id], note:vanForm.notes[i.id] || null }));
+}
+
+async function startRun() {
+  if (!vanForm.vehicleId) { error = 'Pick a van first.'; return render(); }
+  error = '';
+  try {
+    await api.startVan({
+      vehicleId: vanForm.vehicleId,
+      odometer: vanForm.odometer ? Number(vanForm.odometer) : null,
+      answers: buildAnswers()
+    });
+    await load();
+  } catch (err) {
+    error = err.message; render();
+  }
+}
+
+async function skipCheck() {
+  const why = prompt('Why are you skipping the check?');
+  if (!why || !why.trim()) return;
+  try {
+    await api.startVan({ vehicleId: vanForm.vehicleId, skipped: true, skipReason: why.trim() });
+    await load();
+  } catch (err) { error = err.message; render(); }
+}
+
+/* ── run ─────────────────────────────────────────────────────────────────── */
+
+function merged(stop) {
+  const o = local.get(stop.id);
+  return o ? { ...stop, ...o } : stop;
+}
+
+function stopHTML(raw) {
+  const s = merged(raw);
+  const isMarker = s.kind !== 'customer';
+
+  if (s.status === 'done' || s.status === 'issue') {
+    const iss = s.status === 'issue';
+    return `<article class="stop settled ${iss ? 'is-issue' : ''}">
+      <div class="rail"><span class="seq num">${s.seq}</span><span class="tick"></span></div>
+      <div class="body">
+        <div class="cust">${esc(s.name)}</div>
+        <div class="settledrow">
+          <span class="stamp-time num">${iss ? esc(REASONS[s.issue_reason] || 'Issue') : 'Done'} &middot; ${s.marked_at ? clock(s.marked_at) : ''}</span>
+          <button class="undo" data-undo="${s.id}">Undo</button>
+        </div>
+        ${iss && s.issue_note ? `<div class="issnote">&ldquo;${esc(s.issue_note)}&rdquo;</div>` : ''}
+      </div>
+    </article>`;
+  }
+
+  const addr = [s.address, s.suburb].filter(Boolean).join(', ');
+  return `<article class="stop ${isMarker ? 'marker' : ''}">
+    <div class="rail"><span class="seq num">${s.seq}</span><span class="tick"></span></div>
+    <div class="body">
+      <div class="cust">${esc(s.name)}</div>
+      ${addr ? `<div class="addr">${esc(addr)}</div>` : ''}
+      ${(s.scheduled_time || s.earliest_time) ? `<div class="tags">
+        ${s.scheduled_time ? `<span class="tag time">${hhmm(s.scheduled_time)}</span>` : ''}
+        ${s.earliest_time ? `<span class="tag time">not before ${hhmm(s.earliest_time)}</span>` : ''}
+      </div>` : ''}
+      ${s.standing_order ? `<div class="order">${esc(s.standing_order)}</div>` : ''}
+      ${s.access_notes ? `<div class="access"><span>&#9888;</span><span>${esc(s.access_notes)}</span></div>` : ''}
+      ${(addr || s.phone) ? `<div class="links">
+        ${addr ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Open in Maps</a>` : ''}
+        ${s.phone ? `<a href="tel:${esc(String(s.phone).replace(/\s/g,''))}">Call${s.contact_name ? ' ' + esc(s.contact_name) : ''}</a>` : ''}
+      </div>` : ''}
+      ${s.tickable ? `<div class="acts">
+        <button class="act done" data-done="${s.id}">Done</button>
+        <button class="act issue" data-issue="${s.id}" data-name="${esc(s.name)}">Issue</button>
+      </div>` : ''}
+    </div>
+  </article>`;
+}
+
+function renderRun() {
+  const runs = data.runs || [];
+  const all = runs.flatMap(r => r.stops).map(merged);
+  const tickable = all.filter(s => s.tickable);
+  const settledCount = tickable.filter(s => s.status === 'done' || s.status === 'issue').length;
+  const pendingCount = tickable.length - settledCount;
+  const q = queueLength();
+  const cls = !navigator.onLine ? 'off' : (q ? 'queued' : '');
+  const txt = !navigator.onLine ? (q ? `${q} waiting to send` : 'Offline')
+            : (q ? `${q} waiting to send` : 'Synced');
+  const d = new Date(data.service_date + 'T00:00:00');
+
+  const cancelled = runs.filter(r => r.status === 'cancelled');
+  const active = runs.filter(r => r.status !== 'cancelled');
+
+  app.innerHTML = `
+    <header class="runhead">
+      <div class="runtop">
+        <span class="who">${esc(data.driver.name)}</span>
+        <span class="sync ${cls}"><span class="led"></span>${txt}</span>
+      </div>
+      <div class="runmeta">
+        <span class="date">${d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' })}${
+          runs[0] && runs[0].start_time ? ' &middot; ' + hhmm(runs[0].start_time) + ' start' : ''}</span>
+        <span class="pill num">${settledCount} of ${tickable.length}</span>
+      </div>
+      <div class="bar"><i style="width:${tickable.length ? (settledCount / tickable.length * 100).toFixed(1) : 0}%"></i></div>
+    </header>
+
+    ${stale ? `<div class="routehead" style="background:var(--flag-soft);color:var(--flag)">Showing your run as of ${clock(new Date(stale).toISOString())}</div>` : ''}
+    ${error ? `<p class="err" style="margin:12px 14px 0">${esc(error)}</p>` : ''}
+
+    <div class="stops">
+      ${cancelled.map(r => `<div class="empty"><strong>No run today</strong>${esc(r.cancel_label || r.cancel_reason || 'The office has cancelled this run.')}</div>`).join('')}
+      ${active.map(r => {
+        const pend = r.stops.filter(s => { const m = merged(s); return m.status === 'pending'; });
+        const done = r.stops.filter(s => { const m = merged(s); return m.status !== 'pending'; });
+        return `
+          ${active.length > 1 ? `<div class="routehead"><span>${esc(r.route_name)}</span></div>` : ''}
+          ${pend.map(stopHTML).join('')}
+          ${done.length ? `<div class="routehead"><span>Done &amp; issues</span><span class="num">${done.length}</span></div>` : ''}
+          ${done.map(stopHTML).join('')}`;
+      }).join('')}
+      ${active.length && !all.length ? '<div class="empty"><strong>Nothing scheduled for you today.</strong>Check with the office.</div>' : ''}
+      ${!runs.length ? '<div class="empty"><strong>Nothing scheduled for you today.</strong>Check with the office.</div>' : ''}
+      <p class="foot">v${BUILD} &middot; <button class="undo" id="signout">Sign out</button></p>
+    </div>
+
+    ${(tickable.length && pendingCount === 0) ? `<button class="finish" id="finish">Finish run</button>` : ''}
+    ${sheet ? sheetHTML() : ''}`;
+
+  app.querySelectorAll('[data-done]').forEach(b =>
+    b.addEventListener('click', () => mark(b.dataset.done, 'done')));
+  app.querySelectorAll('[data-issue]').forEach(b =>
+    b.addEventListener('click', () => { sheet = { stopId:b.dataset.issue, name:b.dataset.name, reason:null, note:'' }; render(); }));
+  app.querySelectorAll('[data-undo]').forEach(b =>
+    b.addEventListener('click', () => undo(b.dataset.undo)));
+  const fin = app.querySelector('#finish');
+  if (fin) fin.addEventListener('click', finish);
+  app.querySelector('#signout').addEventListener('click', signOut);
+  wireSheet();
+}
+
+function sheetHTML() {
+  return `<div class="sheet-bg" id="bg"><div class="sheet">
+    <h3>What happened?</h3>
+    <p class="for">${esc(sheet.name)}</p>
+    <div class="opts">
+      ${Object.entries(REASONS).map(([k,v]) =>
+        `<button class="opt" data-r="${k}" aria-pressed="${sheet.reason === k}">${v}</button>`).join('')}
+    </div>
+    <input id="note" placeholder="Add a note (optional)" value="${esc(sheet.note)}">
+    <div class="sheetacts">
+      <button class="btn-ghost" id="cancel">Cancel</button>
+      <button class="btn-solid" id="save">Save issue</button>
+    </div>
+  </div></div>`;
+}
+
+function wireSheet() {
+  if (!sheet) return;
+  app.querySelectorAll('.opt').forEach(b =>
+    b.addEventListener('click', () => { sheet.reason = b.dataset.r; render(); }));
+  app.querySelector('#note').addEventListener('input', e => { sheet.note = e.target.value; });
+  app.querySelector('#cancel').addEventListener('click', () => { sheet = null; render(); });
+  app.querySelector('#bg').addEventListener('click', e => { if (e.target.id === 'bg') { sheet = null; render(); } });
+  app.querySelector('#save').addEventListener('click', () => {
+    if (!sheet.reason) return;
+    mark(sheet.stopId, 'issue', sheet.reason, sheet.note);
+    sheet = null;
+  });
+}
+
+/* ── actions (optimistic, then queued) ───────────────────────────────────── */
+
+function mark(stopId, status, reason, note) {
+  local.set(stopId, {
+    status, issue_reason: reason || null, issue_note: (note || '').trim() || null,
+    marked_at: new Date().toISOString()
+  });
+  queueAction({ type:'mark', stopId, status, reason, note });
+  render();
+}
+
+function undo(stopId) {
+  local.set(stopId, { status:'pending', issue_reason:null, issue_note:null, marked_at:null });
+  queueAction({ type:'undo', stopId });
+  render();
+}
+
+async function finish() {
+  const run = (data.runs || [])[0];
+  if (!run) return;
+  await drain();
+  const odo = prompt('Closing odometer reading? (leave blank to skip)');
+  try {
+    await api.finish(run.run_day_id);
+    if (odo && /^[0-9]+$/.test(odo.trim())) await api.closeVan(Number(odo.trim()));
+    else await api.closeVan(null);
+    error = '';
+    alert('Run finished. Nice work.');
+    await load();
+  } catch (err) { error = err.message; render(); }
+}
+
+async function signOut() {
+  try { await api.logout(); } catch {}
+  session.clear();
+  location.replace('index.html');
+}
+
+/* ── wiring ──────────────────────────────────────────────────────────────── */
+
+function render() {
+  if (screen === 'loading') { app.innerHTML = '<div class="empty">Loading your run&hellip;</div>'; return; }
+  if (screen === 'van') return renderVan();
+  if (data) return renderRun();
+  app.innerHTML = `<div class="empty"><strong>Can&rsquo;t load your run.</strong>${esc(error)}</div>`;
+}
+
+// When the queue drains, pull fresh server state so local overrides retire
+window.addEventListener('outbox', async () => {
+  if (queueLength() === 0 && navigator.onLine && screen === 'run') {
+    // must keep forcedDate, or draining the queue silently jumps back to today
+    try { data = await api.today(forcedDate); cacheRun(data); local.clear(); stale = null; } catch {}
+  }
+  render();
+});
+window.addEventListener('online', render);
+window.addEventListener('offline', render);
+
+load();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

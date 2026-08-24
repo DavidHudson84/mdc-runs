@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B4D8F">
+<title>Driver Runs — Master Dry Cleaners</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<main class="app" id="app"></main>
+
+<script type="module">
+import { api, session, ApiError } from './assets/api.js';
+import { BUILD } from './assets/config.js';
+
+const app = document.getElementById('app');
+let drivers = [];
+let picked = null;
+let pin = '';
+let busy = false;
+let error = '';
+
+const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+// Already signed in? Straight to the run — most mornings this is the whole flow.
+if (session.token) location.replace('run.html');
+
+async function boot() {
+  try {
+    drivers = await api.drivers();
+  } catch (err) {
+    error = navigator.onLine ? err.message : 'No signal. Try again when you have reception.';
+  }
+  render();
+}
+
+function renderPicker() {
+  app.innerHTML = `
+    <div class="pad-screen">
+      <span class="mark">Master Dry Cleaners</span>
+      <h2>Who&rsquo;s driving?</h2>
+      <p class="sub">${new Date().toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' })}</p>
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+      <div class="names">
+        ${drivers.map(d => `
+          <button class="name-btn" data-id="${d.id}">
+            <span class="initials">${esc(d.display_name.slice(0,2).toUpperCase())}</span>
+            ${esc(d.display_name)}
+          </button>`).join('')
+          || (error ? '' : '<p class="sub">No drivers set up yet. Ask the office.</p>')}
+      </div>
+      <p class="foot">v${BUILD}</p>
+    </div>`;
+
+  app.querySelectorAll('.name-btn').forEach(b =>
+    b.addEventListener('click', () => {
+      picked = drivers.find(d => d.id === b.dataset.id);
+      pin = ''; error = ''; render();
+    }));
+}
+
+function renderPin() {
+  app.innerHTML = `
+    <div class="pad-screen">
+      <button class="back" id="back">&larr; Not you?</button>
+      <h2>Hello ${esc(picked.display_name)}</h2>
+      <p class="sub">Enter your four-digit PIN</p>
+      <div class="dots">
+        ${[0,1,2,3].map(i => `<span class="dot ${i < pin.length ? 'on' : ''}"></span>`).join('')}
+      </div>
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+      <div class="keys">
+        ${[1,2,3,4,5,6,7,8,9].map(k => `<button class="key" data-k="${k}">${k}</button>`).join('')}
+        <span></span>
+        <button class="key" data-k="0">0</button>
+        <button class="key ghost" data-k="del">back</button>
+      </div>
+    </div>`;
+
+  app.querySelector('#back').addEventListener('click', () => { picked = null; error = ''; render(); });
+  app.querySelectorAll('.key').forEach(b => b.addEventListener('click', () => press(b.dataset.k)));
+}
+
+function press(k) {
+  if (busy) return;
+  if (k === 'del') { pin = pin.slice(0, -1); return render(); }
+  if (pin.length >= 4) return;
+  pin += k;
+  render();
+  if (pin.length === 4) submit();
+}
+
+async function submit() {
+  busy = true; error = '';
+  try {
+    const res = await api.login(picked.id, pin);
+    session.save(res.token, res.driver);
+    location.replace('run.html');
+  } catch (err) {
+    error = err instanceof ApiError ? err.message
+          : 'No signal. Try again when you have reception.';
+    pin = ''; busy = false; render();
+  }
+}
+
+function render() { picked ? renderPin() : renderPicker(); }
+
+boot();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
