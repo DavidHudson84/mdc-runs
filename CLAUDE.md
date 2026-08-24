@@ -12,18 +12,27 @@ Australian spelling throughout. Full scope lives in the plan at
 
 ## Where it's up to
 
-**Live at https://davidhudson84.github.io/mdc-runs/** — driver side only.
+**Live at https://davidhudson84.github.io/mdc-runs/** (drivers) and
+**/admin/** (office).
 
-Built and tested against the live database: name picker, four-digit PIN login
-with lockout, the once-a-day van check (van, odometer, checklist), and the run
-screen with Done / Issue / undo, an offline outbox, and finish-run.
+**Driver side — built and tested end to end** against the live database: name
+picker, four-digit PIN with lockout, the once-a-day van check (van, odometer,
+checklist), and the run screen with Done / Issue / undo, an offline outbox and
+finish-run.
 
-Not built yet: the whole admin side — today's board, customers, the weekly
-pattern editor, vans, and the "Who was driving?" fine-attribution lookup.
+**Admin side — built, only the login is verified.** Today's board, Customers
+(search, edit, day assignment) and Vans (register with add/edit/retire, plus
+the "Who was driving?" lookup). Everything past the login is UNTESTED because
+no admin account existed when it was written — the first person to sign in
+should expect rough edges, particularly in the PostgREST embeds.
 
-Known gap: a second marker on the same route and weekday ("Back at the plant by
-5.30") is not generating. The `route_stops_uq` index fix is in `0001` but was
-never confirmed applied to the live database.
+**First admin:** sign up at `/admin/` with a `@hudsongroup.com.au` address and
+confirm the email. A trigger (`grant_admin_on_confirm`, migration 0004) grants
+admin only on confirmation, so a fake address at that domain gets nothing.
+
+**Still to build:** the day editor (reassign a stop, add ad-hoc, cancel a day),
+the weekly pattern grid with drag-and-drop, drivers admin with PIN reset, the
+holiday calendar, the Excel import, and reports.
 
 Seeded drivers use placeholder PINs (Kemu 1111, Darren 2222, Sione 3333, Paulo
 4444). Reset them from the admin page once it exists — the house convention is
