@@ -10,6 +10,36 @@ Australian spelling throughout. Full scope lives in the plan at
 
 ---
 
+## Where it's up to
+
+**Live at https://davidhudson84.github.io/mdc-runs/** — driver side only.
+
+Built and tested against the live database: name picker, four-digit PIN login
+with lockout, the once-a-day van check (van, odometer, checklist), and the run
+screen with Done / Issue / undo, an offline outbox, and finish-run.
+
+Not built yet: the whole admin side — today's board, customers, the weekly
+pattern editor, vans, and the "Who was driving?" fine-attribution lookup.
+
+Known gap: a second marker on the same route and weekday ("Back at the plant by
+5.30") is not generating. The `route_stops_uq` index fix is in `0001` but was
+never confirmed applied to the live database.
+
+Seeded drivers use placeholder PINs (Kemu 1111, Darren 2222, Sione 3333, Paulo
+4444). Reset them from the admin page once it exists — the house convention is
+the last four digits of the driver's mobile.
+
+`run.html?date=YYYY-MM-DD` opens another day and skips the van gate. Used for a
+late run finishing after midnight, and for checking a day from the office.
+
+## Scope — this project only
+
+This repo is standalone. It has nothing to do with DrapesQuotePro, Fergus,
+Xero, Employment Hero, Deputy, or the wider Hudson Group AIOS workspace, and it
+must not grow dependencies on any of them. If a session starts pulling in
+portfolio context, it is running from the wrong folder — the working directory
+should be this repo, not `Desktop\AIOS`.
+
 ## Stack
 
 Static HTML/CSS/vanilla JS on GitHub Pages, Supabase behind it. **No npm, no framework,
