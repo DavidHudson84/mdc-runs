@@ -24,6 +24,7 @@ let date = new URLSearchParams(location.search).get('date') || todayISO();
 let error = '';
 let poll = null;
 let drivers = [], msgs = [], msgDraft = { to:'', body:'' }, business = null;
+let acks = [], showSnoozed = false;
 
 /* ── login ───────────────────────────────────────────────────────────────── */
 
@@ -78,37 +79,59 @@ function checkFlags(d) {
   // only chase drivers who are actually rostered on this week
   const working = new Set((d.runs || []).map(r => r.driver_id).filter(Boolean));
   return drivers.filter(x => x.is_active && working.has(x.id) && !did.has(x.id))
-                .map(x => `${x.display_name} has not done the weekly van check yet`);
+    .map(x => ({ key: `weekly_check:${x.id}:${d.weekStart}`, ctx: d.weekStart,
+                 text: `${x.display_name} has not done the weekly van check yet` }));
 }
 
 function vanFlags(vans, logs) {
   const out = [];
   vans.forEach(v => {
-    if (v.service_due_km != null && v.odometer != null && v.service_due_km - v.odometer <= 500)
-      out.push(`${v.label} (${v.rego}) — service due in ${(v.service_due_km - v.odometer).toLocaleString('en-AU')} km`);
+    // The context is the state being acknowledged: change it and the alert
+    // returns at once. Deliberately NOT the odometer -- that moves every day
+    // when a driver signs the van out, which would un-silence the alert daily
+    // and put us straight back to nobody reading it. What counts as "something
+    // was done" is the service figures being updated.
+    const ctx = `${v.service_due_km}|${v.service_due_date}`;
+    if (v.service_due_km != null && v.odometer != null && v.service_due_km - v.odometer <= 500) {
+      const n = v.service_due_km - v.odometer;
+      out.push({ key:`van_service_km:${v.id}`, ctx, text:`${v.label} (${v.rego}) — service ` +
+        (n < 0 ? Math.abs(n).toLocaleString('en-AU') + ' km overdue'
+               : 'due in ' + n.toLocaleString('en-AU') + ' km') });
+    }
     if (v.service_due_date) {
       const days = Math.round((new Date(v.service_due_date) - new Date(date)) / 86400000);
-      if (days <= 14) out.push(`${v.label} (${v.rego}) — service due ${days < 0 ? Math.abs(days) + ' days ago' : 'in ' + days + ' days'}`);
+      if (days <= 14) out.push({ key:`van_service_date:${v.id}`, ctx,
+        text:`${v.label} (${v.rego}) — service due ` +
+             (days < 0 ? Math.abs(days) + ' days ago' : 'in ' + days + ' days') });
     }
     if (v.rego_expiry) {
       const days = Math.round((new Date(v.rego_expiry) - new Date(date)) / 86400000);
-      if (days <= 30) out.push(`${v.label} (${v.rego}) — rego ${days < 0 ? 'expired' : 'expires in ' + days + ' days'}`);
+      if (days <= 30) out.push({ key:`van_rego:${v.id}`, ctx:String(v.rego_expiry),
+        text:`${v.label} (${v.rego}) — rego ` +
+             (days < 0 ? 'expired' : 'expires in ' + days + ' days') });
     }
   });
   logs.filter(l => l.failed).forEach(l => {
     const bad = (l.answers || []).filter(a => a.ok === false)
       .map(a => `${a.label}${a.note ? ' — ' + a.note : ''}`).join('; ');
-    out.push(`${l.vehicles ? l.vehicles.label : 'Van'} failed the pre-start check (${l.drivers ? l.drivers.display_name : '?'}): ${bad}`);
+    out.push({ key:`check_fault:${l.id}`, ctx:String(l.id),
+      text:`${l.vehicles ? l.vehicles.label : 'Van'} failed the pre-start check ` +
+           `(${l.drivers ? l.drivers.display_name : '?'}): ${bad}` });
   });
   logs.filter(l => l.skipped).forEach(l => {
-    out.push(`${l.drivers ? l.drivers.display_name : 'A driver'} skipped the pre-start check — “${l.skip_reason}”`);
+    out.push({ key:`check_skipped:${l.id}`, ctx:String(l.id),
+      text:`${l.drivers ? l.drivers.display_name : 'A driver'} skipped the pre-start check` });
   });
   return out;
 }
 
+const ackFor = f => acks.find(a => a.alert_key === f.key && a.context === f.ctx);
+
 function renderBoard(d) {
   const issues = issuesFrom(d.runs);
-  const flags = [...checkFlags(d), ...vanFlags(d.vans, d.logs)];
+  const allFlags = [...checkFlags(d), ...vanFlags(d.vans, d.logs)];
+  const flags = allFlags.filter(f => !ackFor(f));
+  const snoozed = allFlags.filter(f => ackFor(f));
 
   root.innerHTML = `
     ${nav('index.html')}
@@ -131,8 +154,20 @@ function renderBoard(d) {
           </li>`).join('')}
         </ul></div>` : ''}
 
-        ${flags.length ? `<div class="amber"><strong>Vans</strong>
-          <ul>${flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
+        ${flags.length ? `<div class="amber"><strong>Needs action</strong>
+          <ul class="flaglist">${flags.map(f => `<li><span>${esc(f.text)}</span>
+            <button class="ackbtn" data-ack="${esc(f.key)}" data-ctx="${esc(f.ctx)}">Mark actioned</button>
+          </li>`).join('')}</ul></div>` : ''}
+        ${snoozed.length ? `<div class="snoozed">
+          <button class="undo" id="togglesnooze">${showSnoozed ? 'Hide' : 'Show'} ${snoozed.length} marked actioned</button>
+          ${showSnoozed ? `<ul class="flaglist">${snoozed.map(f => {
+            const a = ackFor(f);
+            return `<li><span>${esc(f.text)}<small>back on ` +
+              `${esc(new Date(a.snooze_until).toLocaleDateString('en-AU'))}` +
+              `${a.note ? ' · “' + esc(a.note) + '”' : ''}</small></span>` +
+              `<button class="undo" data-unack="${esc(f.key)}">undo</button></li>`;
+          }).join('')}</ul>` : ''}
+        </div>` : ''}
 
         ${d.runs.length ? `<div class="board">
           ${d.runs.map(r => {
@@ -195,6 +230,23 @@ function renderBoard(d) {
     </div>`;
 
   wireNav();
+  root.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', async () => {
+    const note = prompt('What is being done about it? (optional)') ?? '';
+    try {
+      await rpcAdmin('ack_alert', { p_business_id: business.id, p_alert_key: b.dataset.ack,
+        p_context: b.dataset.ctx, p_note: note.trim() || null, p_days: 7 });
+      await refresh();
+    } catch (e) { alert(e.message); }
+  }));
+  root.querySelectorAll('[data-unack]').forEach(b => b.addEventListener('click', async () => {
+    try {
+      await db('alert_acks?alert_key=eq.' + encodeURIComponent(b.dataset.unack), { method:'DELETE' });
+      await refresh();
+    } catch (e) { alert(e.message); }
+  }));
+  const ts = root.querySelector('#togglesnooze');
+  if (ts) ts.addEventListener('click', () => { showSnoozed = !showSnoozed; refresh(); });
+
   const mt = root.querySelector('#mto');
   if (mt) mt.addEventListener('change', e => { msgDraft.to = e.target.value; });
   const mb = root.querySelector('#mbody');
@@ -224,6 +276,7 @@ async function refresh() {
   try {
     const d = await loadBoard();
     try { msgs = await rpcAdmin('admin_message_status', { p_business_id: business.id }); } catch {}
+    try { acks = await rpcAdmin('live_alert_acks', { p_business_id: business.id }); } catch { acks = []; }
     renderBoard(d);
   }
   catch (err) {

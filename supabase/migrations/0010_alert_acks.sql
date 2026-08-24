@@ -1,0 +1,21 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0010 — acknowledging standing alerts
+-- Applied via the Supabase MCP; see git history for full bodies.
+--
+-- An alert nobody can clear becomes wallpaper, and then the ones that matter
+-- get skimmed past too. So the office can mark one actioned -- but two rules
+-- stop that becoming a way to hide problems:
+--
+--   1. It expires. Seven days by default, then the alert returns, because
+--      nothing actually happened.
+--   2. It records the STATE it acknowledged. If that state changes the
+--      acknowledgement no longer matches and the alert comes straight back.
+--
+-- What counts as "state" matters more than it looks. For a service alert it is
+-- the service-due figures ONLY -- deliberately not the odometer, because that
+-- moves every day when a driver signs the van out, which would un-silence the
+-- alert daily and defeat the whole point. Found by testing, not by reading.
+--
+--   alert_acks         business, alert_key, context, note, snooze_until
+--   live_alert_acks()  acknowledgements still inside their window
+--   ack_alert()        mark actioned for N days (1-90, default 7)
