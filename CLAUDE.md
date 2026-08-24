@@ -50,6 +50,12 @@ that domain gets nothing.
 the driver RPCs. The domain restriction only ever affects office logins and
 cannot lock a driver out.
 
+**Migrations 0005 and 0006 were applied through the Supabase MCP.** The .sql
+files record the schema changes, but several function bodies (driver_login,
+driver_today, driver_mark_loaded, admin_create_driver, list_drivers_for_picker)
+live only in the database and in git history. Before any fresh deploy, dump the
+current function definitions rather than trusting the migration files alone.
+
 **Still to build:** the day editor (reassign one stop to another driver, add an
 ad-hoc stop, cancel a day) — this is the highest-value remaining piece, because
 doubling up and ad-hoc stops are the daily reality. Then the holiday calendar,

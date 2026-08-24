@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Calendar — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .cal{display:grid; grid-template-columns:repeat(7,1fr)}
+  .cal .dow{font-family:"Archivo",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--ink-3); padding:9px 10px; background:var(--surface-2);
+    border-bottom:1.5px solid var(--line); text-align:left}
+  .cell{min-height:96px; border-right:1.5px solid var(--line); border-bottom:1.5px solid var(--line);
+    padding:8px 9px; background:none; text-align:left; display:flex; flex-direction:column; gap:5px}
+  .cell:nth-child(7n+7){border-right:0}
+  .cell:hover{background:var(--surface-2)}
+  .cell.out{background:var(--surface-2); opacity:.5}
+  .cell.today{box-shadow:inset 0 0 0 2px var(--accent-line)}
+  .cell[aria-current="true"]{background:var(--accent-soft); box-shadow:inset 0 0 0 2px var(--accent)}
+  .cell .dnum{font-family:"Archivo",sans-serif; font-size:14px; font-weight:700}
+  .cell.out .dnum{font-weight:500; color:var(--ink-3)}
+  .cell .norun{font-family:"Archivo",sans-serif; font-size:9.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--issue); background:var(--issue-soft);
+    border:1.5px solid var(--issue-line); border-radius:3px; padding:1px 5px; align-self:flex-start}
+  .cell .runs{display:flex; flex-direction:column; gap:3px; margin-top:auto}
+  .cell .rrow{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2)}
+  .cell .dot{width:7px; height:7px; border-radius:50%; flex:none; background:var(--line-2)}
+  .cell .dot.part{background:var(--flag)} .cell .dot.full{background:var(--done)}
+  .cell .dot.cx{background:var(--issue)}
+  .monthbar{display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1.5px solid var(--line)}
+  .monthbar h3{font-size:17px; font-weight:700; min-width:180px}
+  .navbtn{padding:7px 13px; border:1.5px solid var(--line-2); border-radius:var(--r);
+    font-family:"Archivo",sans-serif; font-size:13px; font-weight:700}
+  .navbtn:hover{border-color:var(--accent); color:var(--accent)}
+  .dayrun{border-bottom:1.5px solid var(--line); padding:14px 20px}
+  .dayrun:last-child{border-bottom:0}
+  .dayrun h4{font-family:"Archivo",sans-serif; font-size:15.5px; font-weight:700}
+  .dayrun .meta{font-size:13px; color:var(--ink-2); margin:2px 0 9px}
+  .slist{display:flex; flex-direction:column; gap:0}
+  .srow{display:grid; grid-template-columns:28px 1fr auto auto; gap:10px; align-items:baseline;
+    padding:6px 0; border-top:1px dashed var(--line); font-size:14px}
+  .srow .n{font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:700; color:var(--ink-3)}
+  .srow .st{font-family:"Archivo",sans-serif; font-size:10px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1.5px solid}
+  .st.done{color:var(--done); background:var(--done-soft); border-color:var(--done)}
+  .st.issue{color:var(--issue); background:var(--issue-soft); border-color:var(--issue-line)}
+  .st.pending{color:var(--ink-3); background:var(--surface-3); border-color:var(--line-2)}
+  .st.marker{color:var(--accent); background:var(--accent-soft); border-color:var(--accent-line)}
+  .srow .t{font-family:"Archivo",sans-serif; font-size:11.5px; color:var(--ink-3); white-space:nowrap}
+  .holidaybar{display:flex; flex-wrap:wrap; gap:9px; align-items:end; padding:14px 20px;
+    background:var(--surface-2); border-bottom:1.5px solid var(--line)}
+  .holidaybar label{display:block; font-family:"Archivo",sans-serif; font-size:10px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:4px}
+  .holidaybar input, .holidaybar select{padding:9px 11px; border:1.5px solid var(--line-2);
+    border-radius:var(--r); background:var(--surface); font-size:14.5px}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, db, rpcAdmin, esc, hhmm, clock, longDate, todayISO, nav, wireNav, mountLogin }
+  from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
+
+let routes = [], business = null;
+let month = todayISO().slice(0, 7);          // YYYY-MM
+let days = [], exceptions = [];
+let open = null;                              // expanded date
+let dayData = null, err = '', busy = false;
+let hol = { label: '', scope: '' };
+
+function renderLogin() { mountLogin(root, boot); }
+
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const monthName = m => new Date(m + '-01T00:00:00')
+  .toLocaleDateString('en-AU', { month:'long', year:'numeric' });
+
+function gridDates() {
+  const first = new Date(month + '-01T00:00:00');
+  const start = new Date(first);
+  start.setDate(1 - ((first.getDay() + 6) % 7));           // back to Monday
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start); d.setDate(start.getDate() + i); return d;
+  });
+}
+
+/* ── month ───────────────────────────────────────────────────────────────── */
+
+async function loadMonth() {
+  const all = gridDates();
+  const from = iso(all[0]), to = iso(all[41]);
+  days = await db(`run_days?service_date=gte.${from}&service_date=lte.${to}` +
+    `&select=id,service_date,status,route_id,routes(name),drivers(display_name),` +
+    `run_stops(status,tickable)&order=service_date.asc`);
+  exceptions = await db(`calendar_exceptions?exception_date=gte.${from}&exception_date=lte.${to}` +
+    `&select=id,exception_date,route_id,action,label`);
+}
+
+function cellHTML(d) {
+  const key = iso(d);
+  const outside = key.slice(0, 7) !== month;
+  const ex = exceptions.filter(e => e.exception_date === key);
+  const noRun = ex.find(e => e.action === 'no_run');
+  const mine = days.filter(x => x.service_date === key);
+
+  return `<button class="cell ${outside ? 'out' : ''} ${key === todayISO() ? 'today' : ''}"
+                  data-day="${key}" aria-current="${open === key}">
+    <span class="dnum">${d.getDate()}</span>
+    ${noRun ? `<span class="norun">${esc(noRun.label || 'no run')}</span>` : ''}
+    <span class="runs">
+      ${mine.map(r => {
+        const s = (r.run_stops || []).filter(x => x.tickable);
+        const settled = s.filter(x => x.status === 'done' || x.status === 'issue').length;
+        const cls = r.status === 'cancelled' ? 'cx'
+                  : (s.length && settled === s.length) ? 'full'
+                  : settled ? 'part' : '';
+        return `<span class="rrow"><span class="dot ${cls}"></span>${esc(r.routes ? r.routes.name : '')}</span>`;
+      }).join('')}
+    </span>
+  </button>`;
+}
+
+/* ── one day ─────────────────────────────────────────────────────────────── */
+
+async function loadDay(date) {
+  // Generating on open is what makes a future day inspectable at all: it is
+  // idempotent and additive, so looking is never destructive.
+  for (const r of routes) { try { await rpcAdmin('ensure_run_day', { p_route_id: r.id, p_service_date: date }); } catch {} }
+  dayData = await db(`run_days?service_date=eq.${date}` +
+    `&select=id,status,cancel_reason,started_at,completed_at,route_id,` +
+    `routes(name,start_time),drivers(display_name),` +
+    `run_stops(id,seq,kind,status,tickable,customer_name,label,loaded_at,marked_at,` +
+    `issue_reason,issue_note,scheduled_time,customers(name))&order=service_date.asc`);
+}
+
+function dayHTML() {
+  if (!open) return '';
+  const ex = exceptions.filter(e => e.exception_date === open);
+  const noRun = ex.find(e => e.action === 'no_run');
+
+  return `<div class="panel">
+    <header>
+      <div><h2>${longDate(open)}</h2>
+        <span class="when">One day on its own. Generating it is harmless — it only ever adds.</span></div>
+      <button class="navbtn" id="closeday">Close</button>
+    </header>
+
+    <div class="holidaybar">
+      ${noRun
+        ? `<div><b>Marked as no run${noRun.label ? ' — ' + esc(noRun.label) : ''}</b>
+             ${noRun.route_id ? '<span class="badge">one run only</span>' : '<span class="badge">all runs</span>'}</div>
+           <button class="navbtn" id="clearhol">Put the runs back on</button>`
+        : `<div><label for="hlabel">Mark this day as no run</label>
+             <input id="hlabel" placeholder="Melbourne Cup Day" value="${esc(hol.label)}"></div>
+           <div><label for="hscope">Which runs</label>
+             <select id="hscope">
+               <option value="">Every run</option>
+               ${routes.map(r => `<option value="${r.id}" ${hol.scope === r.id ? 'selected' : ''}>${esc(r.name)} only</option>`).join('')}
+             </select></div>
+           <button class="btn" id="sethol">Mark no run</button>`}
+    </div>
+    ${err ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}
+
+    ${(dayData || []).length ? dayData.map(r => {
+      const stops = (r.run_stops || []).slice().sort((a,b) => a.seq - b.seq);
+      const tick = stops.filter(s => s.tickable);
+      const done = tick.filter(s => s.status === 'done').length;
+      const issue = tick.filter(s => s.status === 'issue').length;
+      const loaded = tick.filter(s => s.loaded_at).length;
+      return `<div class="dayrun">
+        <h4>${esc(r.routes ? r.routes.name : 'Run')}</h4>
+        <p class="meta">${esc(r.drivers ? r.drivers.display_name : 'No driver')}${
+          r.routes && r.routes.start_time ? ' &middot; ' + hhmm(r.routes.start_time) + ' start' : ''}
+          &middot; ${done} done, ${issue} issue, ${tick.length - done - issue} to go
+          ${loaded ? ' &middot; ' + loaded + ' loaded' : ''}
+          ${r.status === 'cancelled' ? ' &middot; <b>cancelled</b>' : ''}</p>
+        <div class="slist">
+          ${stops.map(s => {
+            const cls = !s.tickable ? 'marker' : s.status;
+            const label = !s.tickable ? 'note' : s.status;
+            return `<div class="srow">
+              <span class="n num">${s.seq}</span>
+              <span>${esc(s.customer_name || (s.customers && s.customers.name) || s.label || '')}
+                ${s.issue_note ? `<br><small style="color:var(--issue)">&ldquo;${esc(s.issue_note)}&rdquo;</small>` : ''}</span>
+              <span class="st ${cls}">${esc(s.status === 'issue' ? (REASONS[s.issue_reason] || 'issue') : label)}</span>
+              <span class="t">${s.loaded_at ? 'L ' + clock(s.loaded_at) + ' ' : ''}${
+                s.marked_at ? clock(s.marked_at) : (s.scheduled_time ? hhmm(s.scheduled_time) : '')}</span>
+            </div>`;
+          }).join('') || '<div class="empty" style="padding:14px">No stops on this run today.</div>'}
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty">Nothing runs on this day.</div>`}
+  </div>`;
+}
+
+/* ── holidays ────────────────────────────────────────────────────────────── */
+
+async function setHoliday() {
+  if (busy) return;
+  busy = true; err = '';
+  try {
+    await db('calendar_exceptions', { method:'POST', body: JSON.stringify({
+      business_id: business.id, exception_date: open,
+      route_id: hol.scope || null, action: 'no_run',
+      label: hol.label.trim() || null
+    })});
+    // any day already generated for that date is cancelled to match
+    const scope = hol.scope ? `&route_id=eq.${hol.scope}` : '';
+    await db(`run_days?service_date=eq.${open}${scope}`, { method:'PATCH',
+      body: JSON.stringify({ status:'cancelled', cancel_reason: hol.label.trim() || 'No run' }) });
+    hol = { label:'', scope:'' };
+    await loadMonth(); await loadDay(open);
+  } catch (e) {
+    err = /duplicate key/.test(e.message)
+      ? 'That day is already marked.' : e.message;
+  }
+  busy = false; render();
+}
+
+async function clearHoliday() {
+  if (busy) return;
+  busy = true; err = '';
+  try {
+    await db(`calendar_exceptions?exception_date=eq.${open}`, { method:'DELETE' });
+    await db(`run_days?service_date=eq.${open}&status=eq.cancelled`, { method:'PATCH',
+      body: JSON.stringify({ status:'planned', cancel_reason: null }) });
+    await loadMonth(); await loadDay(open);
+  } catch (e) { err = e.message; }
+  busy = false; render();
+}
+
+/* ── shell ───────────────────────────────────────────────────────────────── */
+
+function render() {
+  root.innerHTML = `${nav('calendar.html')}<div class="wrap">
+    <div class="panel">
+      <div class="monthbar">
+        <button class="navbtn" id="prev">&larr;</button>
+        <h3>${monthName(month)}</h3>
+        <button class="navbtn" id="next">&rarr;</button>
+        <button class="navbtn" id="thismonth" style="margin-left:auto">Today</button>
+      </div>
+      <div class="cal">
+        ${DOW.map(d => `<div class="dow">${d}</div>`).join('')}
+        ${gridDates().map(cellHTML).join('')}
+      </div>
+    </div>
+    ${dayHTML()}
+  </div>`;
+
+  wireNav();
+  root.querySelector('#prev').addEventListener('click', () => shift(-1));
+  root.querySelector('#next').addEventListener('click', () => shift(1));
+  root.querySelector('#thismonth').addEventListener('click', () => {
+    month = todayISO().slice(0,7); open = null; dayData = null; refresh();
+  });
+  root.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.day)));
+
+  const c = root.querySelector('#closeday');
+  if (c) c.addEventListener('click', () => { open = null; dayData = null; render(); });
+  const hl = root.querySelector('#hlabel');
+  if (hl) hl.addEventListener('input', e => { hol.label = e.target.value; });
+  const hs = root.querySelector('#hscope');
+  if (hs) hs.addEventListener('change', e => { hol.scope = e.target.value; });
+  const sh = root.querySelector('#sethol');
+  if (sh) sh.addEventListener('click', setHoliday);
+  const ch = root.querySelector('#clearhol');
+  if (ch) ch.addEventListener('click', clearHoliday);
+}
+
+function shift(n) {
+  const d = new Date(month + '-01T00:00:00');
+  d.setMonth(d.getMonth() + n);
+  month = iso(d).slice(0,7);
+  open = null; dayData = null;
+  refresh();
+}
+
+async function openDay(date) {
+  if (open === date) { open = null; dayData = null; return render(); }
+  open = date; dayData = null; err = ''; render();
+  try { await loadDay(date); await loadMonth(); }
+  catch (e) { err = e.message; }
+  render();
+}
+
+async function refresh() {
+  try { await loadMonth(); render(); }
+  catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('calendar.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    routes = await db('routes?is_active=eq.true&select=id,name&order=sort_order.asc');
+    await refresh();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('calendar.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

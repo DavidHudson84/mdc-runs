@@ -96,6 +96,7 @@ export function nav(current) {
   const items = [
     ['index.html', 'Today'],
     ['runs.html', 'Runs'],
+    ['calendar.html', 'Calendar'],
     ['customers.html', 'Customers'],
     ['drivers.html', 'Drivers'],
     ['vans.html', 'Vans']

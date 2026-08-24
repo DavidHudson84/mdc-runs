@@ -48,9 +48,10 @@ function renderPicker() {
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
       <div class="names">
         ${drivers.map(d => `
-          <button class="name-btn" data-id="${d.id}">
+          <button class="name-btn" data-id="${d.id}" ${d.has_pin === false ? 'data-nopin="1"' : ''}>
             <span class="initials">${esc(d.display_name.slice(0,2).toUpperCase())}</span>
             ${esc(d.display_name)}
+            ${d.has_pin === false ? '<small>no PIN yet</small>' : ''}
           </button>`).join('')
           || (error ? '' : '<p class="sub">No drivers set up yet. Ask the office.</p>')}
       </div>
@@ -59,6 +60,7 @@ function renderPicker() {
 
   app.querySelectorAll('.name-btn').forEach(b =>
     b.addEventListener('click', () => {
+      if (b.dataset.nopin) { error = 'No PIN set for you yet. Ask the office.'; return render(); }
       picked = drivers.find(d => d.id === b.dataset.id);
       pin = ''; error = ''; render();
     }));

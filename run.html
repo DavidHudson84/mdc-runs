@@ -185,6 +185,7 @@ function stopHTML(raw) {
           <span class="stamp-time num">${iss ? esc(REASONS[s.issue_reason] || 'Issue') : 'Done'} &middot; ${s.marked_at ? clock(s.marked_at) : ''}</span>
           <button class="undo" data-undo="${s.id}">Undo</button>
         </div>
+        ${s.loaded_at ? `<div class="loadnote">Loaded ${clock(s.loaded_at)}</div>` : ''}
         ${iss && s.issue_note ? `<div class="issnote">&ldquo;${esc(s.issue_note)}&rdquo;</div>` : ''}
       </div>
     </article>`;
@@ -206,10 +207,14 @@ function stopHTML(raw) {
         ${addr ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Open in Maps</a>` : ''}
         ${s.phone ? `<a href="tel:${esc(String(s.phone).replace(/\s/g,''))}">Call${s.contact_name ? ' ' + esc(s.contact_name) : ''}</a>` : ''}
       </div>` : ''}
-      ${s.tickable ? `<div class="acts">
-        <button class="act done" data-done="${s.id}">Done</button>
-        <button class="act issue" data-issue="${s.id}" data-name="${esc(s.name)}">Issue</button>
-      </div>` : ''}
+      ${s.tickable ? `
+        <button class="loadbtn ${s.loaded_at ? 'on' : ''}" data-load="${s.id}" data-to="${s.loaded_at ? '0' : '1'}">
+          ${s.loaded_at ? '&#10003; Loaded &middot; ' + clock(s.loaded_at) + '  (tap to undo)' : 'Confirm loaded'}
+        </button>
+        <div class="acts">
+          <button class="act done" data-done="${s.id}">Done</button>
+          <button class="act issue" data-issue="${s.id}" data-name="${esc(s.name)}">Issue</button>
+        </div>` : ''}
     </div>
   </article>`;
 }
@@ -220,6 +225,7 @@ function renderRun() {
   const tickable = all.filter(s => s.tickable);
   const settledCount = tickable.filter(s => s.status === 'done' || s.status === 'issue').length;
   const pendingCount = tickable.length - settledCount;
+  const loadedCount = tickable.filter(s => s.loaded_at).length;
   const q = queueLength();
   const cls = !navigator.onLine ? 'off' : (q ? 'queued' : '');
   const txt = !navigator.onLine ? (q ? `${q} waiting to send` : 'Offline')
@@ -239,6 +245,7 @@ function renderRun() {
         <span class="date">${d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' })}${
           runs[0] && runs[0].start_time ? ' &middot; ' + hhmm(runs[0].start_time) + ' start' : ''}</span>
         <span class="pill num">${settledCount} of ${tickable.length}</span>
+        ${loadedCount ? `<span class="pill alt num">${loadedCount} loaded</span>` : ''}
       </div>
       <div class="bar"><i style="width:${tickable.length ? (settledCount / tickable.length * 100).toFixed(1) : 0}%"></i></div>
     </header>
@@ -269,6 +276,8 @@ function renderRun() {
     b.addEventListener('click', () => mark(b.dataset.done, 'done')));
   app.querySelectorAll('[data-issue]').forEach(b =>
     b.addEventListener('click', () => { sheet = { stopId:b.dataset.issue, name:b.dataset.name, reason:null, note:'' }; render(); }));
+  app.querySelectorAll('[data-load]').forEach(b =>
+    b.addEventListener('click', () => markLoaded(b.dataset.load, b.dataset.to === '1')));
   app.querySelectorAll('[data-undo]').forEach(b =>
     b.addEventListener('click', () => undo(b.dataset.undo)));
   const fin = app.querySelector('#finish');
@@ -315,6 +324,13 @@ function mark(stopId, status, reason, note) {
     marked_at: new Date().toISOString()
   });
   queueAction({ type:'mark', stopId, status, reason, note });
+  render();
+}
+
+function markLoaded(stopId, loaded) {
+  local.set(stopId, { ...(local.get(stopId) || {}),
+    loaded_at: loaded ? new Date().toISOString() : null });
+  queueAction({ type:'loaded', stopId, loaded });
   render();
 }
 

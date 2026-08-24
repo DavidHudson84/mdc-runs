@@ -136,6 +136,14 @@ export async function drain() {
             p_client_event_id: item.client_event_id,
             p_marked_at: item.marked_at
           });
+        } else if (item.type === 'loaded') {
+          await rpc('driver_mark_loaded', {
+            p_token: session.token,
+            p_run_stop_id: item.stopId,
+            p_loaded: item.loaded,
+            p_client_event_id: item.client_event_id,
+            p_marked_at: item.marked_at
+          });
         } else if (item.type === 'undo') {
           await rpc('driver_undo_stop', {
             p_token: session.token,
