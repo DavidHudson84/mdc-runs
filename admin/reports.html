@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B4D8F">
+<title>Reports — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .tile{padding:16px 20px; border-right:1.5px solid var(--line); border-bottom:1.5px solid var(--line)}
+  .tile:last-child{border-right:0}
+  .tile b{display:block; font-family:"Archivo",sans-serif; font-size:28px; font-weight:700; line-height:1.1}
+  .tile span{font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:600; color:var(--ink-3)}
+  .tile.g b{color:var(--done)} .tile.r b{color:var(--issue)} .tile.a b{color:var(--accent)}
+  .rangebar{display:flex; flex-wrap:wrap; gap:10px; align-items:end; padding:16px 20px;
+    border-bottom:1.5px solid var(--line); background:var(--surface-2)}
+  .rangebar label{display:block; font-family:"Archivo",sans-serif; font-size:10px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:4px}
+  .rangebar input, .rangebar select{padding:9px 11px; border:1.5px solid var(--line-2);
+    border-radius:var(--r); background:var(--surface); font-size:14.5px}
+  .quick{display:flex; gap:6px; flex-wrap:wrap}
+  .quick button{padding:8px 12px; border:1.5px solid var(--line-2); border-radius:20px;
+    font-family:"Archivo",sans-serif; font-size:12.5px; font-weight:700; color:var(--ink-3)}
+  .quick button:hover{border-color:var(--accent); color:var(--accent)}
+  .barcell{display:flex; align-items:center; gap:9px; min-width:150px}
+  .minibar{flex:1; height:7px; background:var(--surface-3); border-radius:4px; overflow:hidden; min-width:60px}
+  .minibar i{display:block; height:100%; background:var(--done)}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { auth, db, esc, clock, longDate, todayISO, nav, wireNav, mountLogin, access, requireAdmin }
+  from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
+
+let business = null, rows = [], from = '', to = '', busy = false, err = '';
+
+function renderLogin() { mountLogin(root, boot); }
+
+function defaultRange() {
+  const t = new Date(todayISO() + 'T00:00:00');
+  const s = new Date(t); s.setDate(t.getDate() - 27);
+  return [s.toISOString().slice(0,10), todayISO()];
+}
+
+/* ── load ────────────────────────────────────────────────────────────────── */
+
+async function load() {
+  busy = true; err = ''; render();
+  try {
+    rows = await db(`run_stops?select=id,status,kind,tickable,customer_name,label,` +
+      `loaded_at,marked_at,issue_reason,issue_note,skipped_reason,origin,seq,` +
+      `customers(name,suburb),drivers!run_stops_marked_by_driver_id_fkey(display_name),` +
+      `run_days!inner(service_date,routes(name),drivers(display_name))` +
+      `&run_days.service_date=gte.${from}&run_days.service_date=lte.${to}` +
+      `&tickable=eq.true&order=id.asc&limit=20000`);
+  } catch (e) { err = e.message; rows = []; }
+  busy = false; render();
+}
+
+const nameOf = r => r.customer_name || (r.customers && r.customers.name) || r.label || '';
+const dateOf = r => r.run_days ? r.run_days.service_date : '';
+const runOf  = r => (r.run_days && r.run_days.routes) ? r.run_days.routes.name : '';
+// who actually ticked it, falling back to whoever the run belonged to
+const whoOf  = r => (r.drivers && r.drivers.display_name)
+                 || ((r.run_days && r.run_days.drivers) ? r.run_days.drivers.display_name : '');
+
+/* ── summaries ───────────────────────────────────────────────────────────── */
+
+function byDriver() {
+  const m = new Map();
+  rows.forEach(r => {
+    const k = whoOf(r) || 'Nobody assigned';
+    const v = m.get(k) || { done:0, issue:0, pending:0, skipped:0, loaded:0 };
+    if (r.status === 'done') v.done++;
+    else if (r.status === 'issue') v.issue++;
+    else if (r.status === 'skipped') v.skipped++;
+    else v.pending++;
+    if (r.loaded_at) v.loaded++;
+    m.set(k, v);
+  });
+  return [...m.entries()].map(([name, v]) => {
+    const attempted = v.done + v.issue;
+    return { name, ...v, attempted, rate: attempted ? v.done / attempted : null };
+  }).sort((a,b) => b.attempted - a.attempted);
+}
+
+function problemCustomers() {
+  const m = new Map();
+  rows.filter(r => r.status === 'issue').forEach(r => {
+    const k = nameOf(r);
+    const v = m.get(k) || { count:0, reasons:new Map(), last:'', notes:[] };
+    v.count++;
+    v.reasons.set(r.issue_reason, (v.reasons.get(r.issue_reason) || 0) + 1);
+    if (dateOf(r) > v.last) v.last = dateOf(r);
+    if (r.issue_note) v.notes.push(r.issue_note);
+    m.set(k, v);
+  });
+  return [...m.entries()].map(([name, v]) => ({ name, ...v }))
+    .sort((a,b) => b.count - a.count);
+}
+
+/* ── CSV ─────────────────────────────────────────────────────────────────── */
+
+function download() {
+  const esc1 = v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const head = ['date','run','driver','stop','status','reason','note','loaded_at','done_at','added_today'];
+  const lines = [head.join(',')];
+  rows.slice().sort((a,b) => (dateOf(a) + runOf(a) + a.seq) .localeCompare(dateOf(b) + runOf(b) + b.seq))
+    .forEach(r => lines.push([
+      dateOf(r), runOf(r), whoOf(r), nameOf(r), r.status,
+      r.status === 'issue' ? (REASONS[r.issue_reason] || r.issue_reason) : (r.skipped_reason || ''),
+      r.issue_note || '',
+      r.loaded_at ? new Date(r.loaded_at).toLocaleString('en-AU') : '',
+      r.marked_at ? new Date(r.marked_at).toLocaleString('en-AU') : '',
+      r.origin === 'adhoc' ? 'yes' : ''
+    ].map(esc1).join(',')));
+  const blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mdc-activity-${from}-to-${to}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ── view ────────────────────────────────────────────────────────────────── */
+
+function render() {
+  const done = rows.filter(r => r.status === 'done').length;
+  const issue = rows.filter(r => r.status === 'issue').length;
+  const pending = rows.filter(r => r.status === 'pending').length;
+  const attempted = done + issue;
+  const rate = attempted ? Math.round(done / attempted * 100) : null;
+  const drivers = byDriver();
+  const problems = problemCustomers();
+
+  root.innerHTML = `${nav('reports.html')}<div class="wrap">
+    <div class="panel">
+      <header><div><h2>Activity</h2>
+        <span class="when">Every stop that could be ticked, between two dates.</span></div>
+        <button class="btn" id="dl" ${rows.length ? '' : 'disabled style="opacity:.5"'}>Download CSV</button>
+      </header>
+      <div class="rangebar">
+        <div><label for="f">From</label><input type="date" id="f" value="${from}"></div>
+        <div><label for="t">To</label><input type="date" id="t" value="${to}"></div>
+        <button class="btn" id="go" style="padding:10px 16px">${busy ? 'Loading&hellip;' : 'Show'}</button>
+        <div class="quick">
+          <button data-days="6">Last 7 days</button>
+          <button data-days="27">Last 4 weeks</button>
+          <button data-days="90">Last 3 months</button>
+        </div>
+      </div>
+      ${err ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}
+      <div class="tiles">
+        <div class="tile"><b class="num">${rows.length}</b><span>STOPS</span></div>
+        <div class="tile g"><b class="num">${done}</b><span>DELIVERED</span></div>
+        <div class="tile r"><b class="num">${issue}</b><span>ISSUES</span></div>
+        <div class="tile"><b class="num">${pending}</b><span>NEVER TICKED</span></div>
+        <div class="tile a"><b class="num">${rate === null ? '—' : rate + '%'}</b><span>COMPLETION</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <header><h2>By driver</h2>
+        <span class="when">Completion is delivered as a share of what they actually got to.</span></header>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Driver</th><th>Delivered</th><th>Issues</th><th>Loaded</th>
+          <th>Never ticked</th><th>Completion</th></tr></thead>
+        <tbody>${drivers.map(d => `<tr>
+          <td class="nm">${esc(d.name)}</td>
+          <td class="num">${d.done}</td>
+          <td class="num">${d.issue || '—'}</td>
+          <td class="num dim">${d.loaded || '—'}</td>
+          <td class="num dim">${d.pending || '—'}</td>
+          <td><span class="barcell">
+            <span class="minibar"><i style="width:${d.rate === null ? 0 : Math.round(d.rate*100)}%"></i></span>
+            <span class="num">${d.rate === null ? '—' : Math.round(d.rate*100) + '%'}</span></span></td>
+        </tr>`).join('') || '<tr><td colspan="6" class="empty">Nothing in this range.</td></tr>'}
+        </tbody></table></div>
+    </div>
+
+    <div class="panel">
+      <header><div><h2>Customers worth a phone call</h2>
+        <span class="when">Repeated problems at the same stop. This is the one that earns money back.</span></div></header>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Customer</th><th>Times</th><th>Why</th><th>Last</th><th>Most recent note</th></tr></thead>
+        <tbody>${problems.slice(0, 50).map(p => `<tr>
+          <td class="nm">${esc(p.name)}</td>
+          <td class="num">${p.count}</td>
+          <td class="dim">${esc([...p.reasons.entries()]
+            .map(([k,v]) => `${REASONS[k] || k} ×${v}`).join(', '))}</td>
+          <td class="dim">${esc(p.last)}</td>
+          <td class="dim">${esc(p.notes[p.notes.length-1] || '')}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="empty">No issues in this range. Good sign.</td></tr>'}
+        </tbody></table></div>
+    </div>
+  </div>`;
+
+  wireNav();
+  const $ = s => root.querySelector(s);
+  $('#f').addEventListener('change', e => { from = e.target.value; });
+  $('#t').addEventListener('change', e => { to = e.target.value; });
+  $('#go').addEventListener('click', load);
+  $('#dl').addEventListener('click', download);
+  root.querySelectorAll('[data-days]').forEach(b => b.addEventListener('click', () => {
+    const t = new Date(todayISO() + 'T00:00:00');
+    const s = new Date(t); s.setDate(t.getDate() - Number(b.dataset.days));
+    from = s.toISOString().slice(0,10); to = todayISO();
+    load();
+  }));
+}
+
+async function boot() {
+  if (!auth.token) return renderLogin();
+  try {
+    await access();
+    if (!(await requireAdmin(root))) return;
+    [business] = await db('businesses?select=id,slug,name&limit=1');
+    [from, to] = defaultRange();
+    await load();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return renderLogin();
+    root.innerHTML = `${nav('reports.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

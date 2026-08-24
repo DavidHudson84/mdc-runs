@@ -1,0 +1,23 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0008 — a middle access level
+-- Applied via the Supabase MCP; see git history for full bodies.
+--
+--   owner / admin  everything
+--   staff          customers, runs, route_stops, calendar, run_days, run_stops
+--                  READ drivers / vehicles / vehicle_logs (they assign stops and
+--                  see which van was out) but cannot change them
+--                  no drivers, no vans, no bulk import, no reports
+--
+-- is_admin() now means owner/admin only. is_staff() means "signed in and belongs
+-- to this business". my_access() tells the interface which it is.
+--
+-- Verified with a real staff account before it was deleted:
+--   edit a customer            allowed
+--   add a stop to a run        allowed
+--   change a driver            0 rows (RLS silently filters UPDATE)
+--   insert a vehicle           RLS violation
+--   admin_set_driver_pin       'not authorised'
+--
+-- NOTE: hiding Reports from staff is a UI decision, not a data boundary --
+-- staff can already read run_stops because they run the day editor. The real
+-- boundaries are drivers (PINs), vehicles and the bulk import.

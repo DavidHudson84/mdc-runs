@@ -38,6 +38,14 @@
   .assignrow span{font-size:13px; color:var(--ink-2); margin-right:3px}
   .adday{border:1.5px solid var(--line-2); background:var(--surface); border-radius:4px; padding:4px 9px; font-family:"Archivo",sans-serif; font-size:12px; font-weight:700; color:var(--ink-2)}
   .adday:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
+  .hist{display:flex; flex-direction:column; gap:4px}
+  .hrow{display:grid; grid-template-columns:auto auto auto 1fr; gap:8px; align-items:baseline; font-size:13px}
+  .hrow .note{grid-column:1 / -1; color:var(--issue); font-size:12.5px}
+  .hrow .st{font-family:"Archivo",sans-serif; font-size:9.5px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; padding:1px 5px; border-radius:3px; border:1.5px solid}
+  .hrow .st.done{color:var(--done); background:var(--done-soft); border-color:var(--done)}
+  .hrow .st.issue{color:var(--issue); background:var(--issue-soft); border-color:var(--issue-line)}
+  .hrow .st.pending,.hrow .st.skipped{color:var(--ink-3); background:var(--surface-3); border-color:var(--line-2)}
   .saverow{display:flex; gap:8px; margin-top:14px}
   .saverow .btn{flex:1; text-align:center}
   .ghost{flex:1; padding:9px 15px; border:1.5px solid var(--line-2); border-radius:var(--r); font-family:"Archivo",sans-serif; font-size:13.5px; font-weight:600}
@@ -47,13 +55,15 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, signIn, db, esc, nav, wireNav, mountLogin } from '../assets/admin.js';
+import { auth, signIn, db, esc, clock, nav, wireNav, mountLogin, access }
+  from '../assets/admin.js';
 
 const root = document.getElementById('root');
 const DAYS = [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat'],[7,'Sun']];
 
 let customers = [], stops = [], routes = [], business = null;
 let q = '', sel = null, draft = null, error = '', saving = false;
+let history = null;   // recent visits for the selected customer
 
 function renderLogin() { mountLogin(root, boot); }
 
@@ -122,6 +132,21 @@ function detailHTML() {
       <p class="sub" style="margin:0">Days are set on the
         <a href="runs.html" style="color:var(--accent)">Runs</a> page, where you can see the
         whole week and drag stops into driving order.</p>
+    </div>
+    <div class="appears">
+      <h4>Last 20 visits</h4>
+      ${history === null ? '<p class="sub" style="margin:0">Loading&hellip;</p>'
+        : history.length === 0 ? '<p class="sub" style="margin:0">No visits recorded yet.</p>'
+        : `<div class="hist">${history.map(h => `<div class="hrow">
+             <span>${esc((h.run_days && h.run_days.service_date) || '')}</span>
+             <span class="st ${h.status}">${esc(h.status === 'issue'
+               ? ({nobody_home:'Nobody home',nothing_ready:'Nothing ready',other:'Other'}[h.issue_reason] || 'issue')
+               : h.status)}</span>
+             <span class="dim">${h.marked_at ? clock(h.marked_at) : ''}</span>
+             ${h.issue_note ? `<span class="note">&ldquo;${esc(h.issue_note)}&rdquo;</span>` : ''}
+           </div>`).join('')}</div>
+           <p class="sub" style="margin:8px 0 0">${
+             history.filter(h => h.status === 'issue').length} issue(s) in these ${history.length} visits.</p>`}
     </div>`}
   </div>`;
 }
@@ -152,7 +177,7 @@ function wireList() {
   root.querySelectorAll('.custrow').forEach(b => b.addEventListener('click', () => {
     sel = b.dataset.id;
     draft = { ...customers.find(c => c.id === sel) };
-    error = ''; render();
+    error = ''; history = null; render(); loadHistory(sel);
   }));
 }
 
@@ -195,6 +220,15 @@ async function save() {
   saving = false; render();
 }
 
+async function loadHistory(id) {
+  try {
+    const h = await db(`run_stops?customer_id=eq.${id}` +
+      `&select=status,issue_reason,issue_note,marked_at,loaded_at,run_days!inner(service_date)` +
+      `&marked_at=not.is.null&order=marked_at.desc&limit=20`);
+    if (sel === id) { history = h; render(); }
+  } catch { if (sel === id) { history = []; render(); } }
+}
+
 async function reload() {
   customers = await db('customers?archived_at=is.null&select=*&order=name.asc');
   stops = await db('route_stops?kind=eq.customer&select=id,route_id,customer_id,weekday,seq,visit_no,active_to');
@@ -203,6 +237,7 @@ async function reload() {
 async function boot() {
   if (!auth.token) return renderLogin();
   try {
+    await access();
     [business] = await db('businesses?select=id,slug,name&limit=1');
     routes = await db('routes?is_active=eq.true&select=id,name&order=sort_order.asc');
     await reload();

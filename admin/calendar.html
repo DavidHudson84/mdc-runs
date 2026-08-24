@@ -34,6 +34,12 @@
   .cell .dot.cx{background:var(--issue)}
   .monthbar{display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1.5px solid var(--line)}
   .monthbar h3{font-size:17px; font-weight:700; min-width:180px}
+  .viewtog{display:flex; margin-left:auto; border:1.5px solid var(--line-2); border-radius:var(--r); overflow:hidden}
+  .vt{padding:7px 14px; font-family:"Archivo",sans-serif; font-size:13px; font-weight:700;
+    color:var(--ink-3); border-right:1.5px solid var(--line-2)}
+  .vt:last-child{border-right:0}
+  .vt[aria-pressed="true"]{background:var(--ink); color:var(--ground)}
+  .cal.wk .cell{min-height:190px}
   .navbtn{padding:7px 13px; border:1.5px solid var(--line-2); border-radius:var(--r);
     font-family:"Archivo",sans-serif; font-size:13px; font-weight:700}
   .navbtn:hover{border-color:var(--accent); color:var(--accent)}
@@ -91,7 +97,7 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, db, rpcAdmin, esc, hhmm, clock, longDate, todayISO, nav, wireNav, mountLogin }
+import { auth, db, rpcAdmin, esc, hhmm, clock, longDate, todayISO, nav, wireNav, mountLogin, access }
   from '../assets/admin.js';
 
 const root = document.getElementById('root');
@@ -99,7 +105,9 @@ const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
 
 let business = null, routes = [], drivers = [], customers = [], onCall = [];
+let view = localStorage.getItem('mdc.calview') || 'month';   // month | week | day
 let month = todayISO().slice(0, 7);
+let anchor = todayISO();                                     // week/day cursor
 let days = [], exceptions = [];
 let open = null, dayData = null, err = '', busy = false;
 let hol = { label:'', scope:'' };
@@ -111,12 +119,31 @@ const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-$
 const monthName = m => new Date(m + '-01T00:00:00').toLocaleDateString('en-AU', { month:'long', year:'numeric' });
 
 function gridDates() {
-  const first = new Date(month + '-01T00:00:00');
-  const start = new Date(first);
-  start.setDate(1 - ((first.getDay() + 6) % 7));
-  return Array.from({ length: 42 }, (_, i) => {
+  let start, len;
+  if (view === 'week') {
+    const a = new Date(anchor + 'T00:00:00');
+    start = new Date(a);
+    start.setDate(a.getDate() - ((a.getDay() + 6) % 7));      // back to Monday
+    len = 7;
+  } else {
+    const first = new Date(month + '-01T00:00:00');
+    start = new Date(first);
+    start.setDate(1 - ((first.getDay() + 6) % 7));
+    len = 42;
+  }
+  return Array.from({ length: len }, (_, i) => {
     const d = new Date(start); d.setDate(start.getDate() + i); return d;
   });
+}
+
+function periodLabel() {
+  if (view === 'month') return monthName(month);
+  if (view === 'day')   return longDate(anchor);
+  const g = gridDates();
+  const a = g[0], b = g[6];
+  const same = a.getMonth() === b.getMonth();
+  return `${a.getDate()} ${same ? '' : a.toLocaleDateString('en-AU',{month:'short'}) + ' '}` +
+         `&ndash; ${b.getDate()} ${b.toLocaleDateString('en-AU',{month:'short', year:'numeric'})}`;
 }
 
 /* ── month ───────────────────────────────────────────────────────────────── */
@@ -131,7 +158,7 @@ async function loadMonth() {
 
 function cellHTML(d) {
   const key = iso(d);
-  const outside = key.slice(0,7) !== month;
+  const outside = view === 'month' && key.slice(0,7) !== month;
   const noRun = exceptions.find(e => e.exception_date === key && e.action === 'no_run');
   const mine = days.filter(x => x.service_date === key);
   return `<button class="cell ${outside?'out':''} ${key===todayISO()?'today':''}"
@@ -356,14 +383,18 @@ function render() {
     <div class="panel">
       <div class="monthbar">
         <button class="navbtn" id="prev">&larr;</button>
-        <h3>${monthName(month)}</h3>
+        <h3>${periodLabel()}</h3>
         <button class="navbtn" id="next">&rarr;</button>
-        <button class="navbtn" id="thismonth" style="margin-left:auto">Today</button>
+        <span class="viewtog">
+          ${['month','week','day'].map(v =>
+            `<button class="vt" data-view="${v}" aria-pressed="${view === v}">${v[0].toUpperCase()+v.slice(1)}</button>`).join('')}
+        </span>
+        <button class="navbtn" id="thismonth">Today</button>
       </div>
-      <div class="cal">
+      ${view === 'day' ? '' : `<div class="cal ${view === 'week' ? 'wk' : ''}">
         ${DOW.map(d => `<div class="dow">${d}</div>`).join('')}
         ${gridDates().map(cellHTML).join('')}
-      </div>
+      </div>`}
     </div>
     ${dayHTML()}
   </div>${modalHTML()}`;
@@ -372,7 +403,13 @@ function render() {
   const $ = s => root.querySelector(s);
   $('#prev').addEventListener('click', () => shift(-1));
   $('#next').addEventListener('click', () => shift(1));
-  $('#thismonth').addEventListener('click', () => { month = todayISO().slice(0,7); open = null; dayData = null; refresh(); });
+  $('#thismonth').addEventListener('click', () => {
+    anchor = todayISO(); month = anchor.slice(0,7);
+    if (view === 'day') return openDay(anchor, true);
+    open = null; dayData = null; refresh();
+  });
+  root.querySelectorAll('[data-view]').forEach(b =>
+    b.addEventListener('click', () => setView(b.dataset.view)));
   root.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.day)));
 
   const c = $('#closeday'); if (c) c.addEventListener('click', () => { open = null; dayData = null; render(); });
@@ -410,20 +447,41 @@ function render() {
 }
 
 function shift(n) {
-  const d = new Date(month + '-01T00:00:00');
-  d.setMonth(d.getMonth() + n);
-  month = iso(d).slice(0,7); open = null; dayData = null; refresh();
+  if (view === 'month') {
+    const d = new Date(month + '-01T00:00:00');
+    d.setMonth(d.getMonth() + n);
+    month = iso(d).slice(0,7);
+    open = null; dayData = null;
+    return refresh();
+  }
+  const d = new Date(anchor + 'T00:00:00');
+  d.setDate(d.getDate() + (view === 'week' ? 7 * n : n));
+  anchor = iso(d); month = anchor.slice(0,7);
+  if (view === 'day') return openDay(anchor, true);
+  open = null; dayData = null; refresh();
 }
 
-async function openDay(date) {
-  if (open === date) { open = null; dayData = null; return render(); }
-  open = date; dayData = null; err = ''; render();
+function setView(v) {
+  view = v; localStorage.setItem('mdc.calview', v);
+  if (v === 'day') { anchor = open || anchor; return openDay(anchor, true); }
+  if (v === 'week') { anchor = open || anchor; }
+  month = anchor.slice(0,7);
+  refresh();
+}
+
+async function openDay(date, force) {
+  if (open === date && !force && view !== 'day') { open = null; dayData = null; return render(); }
+  open = date; anchor = date; dayData = null; err = ''; render();
   try { await loadDay(date); await loadMonth(); } catch (e) { err = e.message; }
   render();
 }
 
 async function refresh() {
-  try { await loadMonth(); render(); }
+  try {
+    await loadMonth();
+    if (view === 'day' && !dayData) { await loadDay(anchor); open = anchor; }
+    render();
+  }
   catch (e) {
     if (/Signed out/.test(e.message)) return renderLogin();
     root.innerHTML = `${nav('calendar.html')}<div class="wrap"><div class="panel"><div class="empty">${esc(e.message)}</div></div></div>`;
@@ -434,6 +492,7 @@ async function refresh() {
 async function boot() {
   if (!auth.token) return renderLogin();
   try {
+    await access();
     [business] = await db('businesses?select=id,slug,name&limit=1');
     routes = await db('routes?is_active=eq.true&select=id,name&order=sort_order.asc');
     drivers = await db('drivers?select=id,display_name,is_active&order=sort_order.asc');

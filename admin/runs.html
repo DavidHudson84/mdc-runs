@@ -72,7 +72,8 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, db, rpcAdmin, esc, hhmm, nav, wireNav, mountLogin } from '../assets/admin.js';
+import { auth, db, rpcAdmin, esc, hhmm, nav, wireNav, mountLogin, access }
+  from '../assets/admin.js';
 
 const root = document.getElementById('root');
 const DAYS = [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat']];
@@ -424,6 +425,7 @@ async function reload() {
 async function boot() {
   if (!auth.token) return renderLogin();
   try {
+    await access();
     [business] = await db('businesses?select=id,slug,name&limit=1');
     drivers = await db('drivers?select=id,display_name,is_active&order=sort_order.asc');
     customers = await db('customers?archived_at=is.null&select=id,name,address_line,suburb&order=name.asc');

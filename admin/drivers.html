@@ -15,7 +15,8 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, db, rpcAdmin, esc, clock, nav, wireNav, mountLogin } from '../assets/admin.js';
+import { auth, db, rpcAdmin, esc, clock, nav, wireNav, mountLogin, access, requireAdmin }
+  from '../assets/admin.js';
 
 const root = document.getElementById('root');
 let drivers = [], sessions = [], business = null;
@@ -200,6 +201,8 @@ async function reload() {
 async function boot() {
   if (!auth.token) return renderLogin();
   try {
+    await access();
+    if (!(await requireAdmin(root))) return;
     [business] = await db('businesses?select=id,slug,name&limit=1');
     await reload();
     render();

@@ -68,6 +68,36 @@ export async function rpcAdmin(fn, args = {}) {
   return db(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
 }
 
+/* ── who am I ────────────────────────────────────────────────────────────── */
+// Staff run the day to day. Owner/admin also get drivers, vans, the bulk
+// import and reports. The database enforces the real boundary — this only
+// decides what to show, so nothing here is a security control on its own.
+
+let _access = null;
+
+export async function access() {
+  if (_access) return _access;
+  _access = await rpcAdmin('my_access');
+  return _access;
+}
+
+export function isAdmin() { return !!(_access && _access.is_admin); }
+
+// Pages only owner/admin should open. Staff are sent back to Today rather
+// than shown a broken screen.
+export async function requireAdmin(root) {
+  const a = await access();
+  if (a.is_admin) return true;
+  root.innerHTML = `${nav('')}<div class="wrap"><div class="panel"><div class="empty">
+    <strong style="display:block;font-family:Archivo,sans-serif;font-size:17px;color:var(--ink)">
+      That page is for owners and admins</strong>
+    You can work on runs, customers and the calendar.
+    <br><br><a class="btn" href="index.html" style="text-decoration:none">Back to Today</a>
+  </div></div></div>`;
+  wireNav();
+  return false;
+}
+
 /* ── shared chrome ───────────────────────────────────────────────────────── */
 
 export const esc = s => String(s ?? '')
@@ -93,15 +123,17 @@ export function todayISO() {
 }
 
 export function nav(current) {
+  const admin = isAdmin();
   const items = [
-    ['index.html', 'Today'],
-    ['runs.html', 'Runs'],
-    ['calendar.html', 'Calendar'],
-    ['customers.html', 'Customers'],
-    ['import.html', 'Import'],
-    ['drivers.html', 'Drivers'],
-    ['vans.html', 'Vans']
-  ];
+    ['index.html', 'Today', false],
+    ['runs.html', 'Runs', false],
+    ['calendar.html', 'Calendar', false],
+    ['customers.html', 'Customers', false],
+    ['reports.html', 'Reports', true],
+    ['import.html', 'Import', true],
+    ['drivers.html', 'Drivers', true],
+    ['vans.html', 'Vans', true]
+  ].filter(([, , adminOnly]) => admin || !adminOnly);
   return `<nav class="anav">
     <a class="brand" href="index.html">Driver Runs</a>
     <div class="tabs">

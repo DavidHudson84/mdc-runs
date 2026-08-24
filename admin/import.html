@@ -40,7 +40,8 @@
 <div id="root"></div>
 
 <script type="module">
-import { auth, db, rpcAdmin, esc, nav, wireNav, mountLogin } from '../assets/admin.js';
+import { auth, db, rpcAdmin, esc, nav, wireNav, mountLogin, access, requireAdmin }
+  from '../assets/admin.js';
 
 const root = document.getElementById('root');
 
@@ -265,6 +266,8 @@ function render() {
 async function boot() {
   if (!auth.token) return renderLogin();
   try {
+    await access();
+    if (!(await requireAdmin(root))) return;
     [business] = await db('businesses?select=id,slug,name&limit=1');
     render();
   } catch (e) {
