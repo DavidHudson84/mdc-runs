@@ -26,9 +26,25 @@ the "Who was driving?" lookup). Everything past the login is UNTESTED because
 no admin account existed when it was written — the first person to sign in
 should expect rough edges, particularly in the PostgREST embeds.
 
-**First admin:** sign up at `/admin/` with a `@hudsongroup.com.au` address and
-confirm the email. A trigger (`grant_admin_on_confirm`, migration 0004) grants
-admin only on confirmation, so a fake address at that domain gets nothing.
+**Adding an office user:** they sign up at `/admin/` with a
+`@hudsongroup.com.au` address. A trigger (`grant_admin_on_confirm`, migration
+0004) grants admin only once the address is CONFIRMED, so a fake address at
+that domain gets nothing.
+
+> **Confirmation emails do not arrive.** No SMTP is configured, and Supabase's
+> built-in mailer is rate-limited to a handful of messages and routinely drops
+> them. Signup succeeds and then the person is stuck. Until SMTP is set up,
+> confirm each new office user by hand:
+> ```sql
+> update auth.users set email_confirmed_at = now()
+>  where email = 'them@hudsongroup.com.au' and email_confirmed_at is null;
+> ```
+> The trigger fires on that update and grants admin. Fine for two or three
+> people; configure SMTP before it is more.
+
+**Drivers never use email or passwords.** Name plus a four-digit PIN, through
+the driver RPCs. The domain restriction only ever affects office logins and
+cannot lock a driver out.
 
 **Still to build:** the day editor (reassign a stop, add ad-hoc, cancel a day),
 the weekly pattern grid with drag-and-drop, drivers admin with PIN reset, the
