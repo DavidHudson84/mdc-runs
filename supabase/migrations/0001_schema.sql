@@ -208,9 +208,13 @@ create table public.route_stops (
   constraint route_stops_fortnight_ck check (frequency <> 'fortnightly' or anchor_date is not null),
   constraint route_stops_monthly_ck   check (frequency <> 'monthly_nth' or nth_of_month is not null)
 );
--- visit_no in the key is what permits a real second visit to the same customer
+-- visit_no in the key is what permits a real second visit to the same customer.
+-- Partial on customer_id: uniqueness only makes sense for customer stops. A run
+-- can carry any number of depot/target/break/note markers, and coalescing a null
+-- customer_id to a fixed uuid silently collapsed two markers into one.
 create unique index route_stops_uq on public.route_stops
-  (route_id, weekday, coalesce(customer_id, '00000000-0000-0000-0000-000000000000'::uuid), visit_no, active_from);
+  (route_id, weekday, customer_id, visit_no, active_from)
+  where customer_id is not null;
 create index route_stops_gen_idx on public.route_stops (route_id, weekday, active_from, active_to);
 create index route_stops_cust_idx on public.route_stops (customer_id) where customer_id is not null;
 
