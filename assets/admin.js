@@ -75,8 +75,8 @@ export async function rpcAdmin(fn, args = {}) {
 
 let _access = null;
 
-export async function access() {
-  if (_access) return _access;
+export async function access(force = false) {
+  if (_access && !force) return _access;
   _access = await rpcAdmin('my_access');
   return _access;
 }
@@ -166,17 +166,30 @@ export async function signUp(email, password) {
 export function mountLogin(root, onSuccess) {
   let mode = 'in', error = '', note = '';
 
+  // The password can be right and the account still have no access: signing up
+  // creates an auth user, but only an invite creates the admins row that every
+  // RLS policy reads. Say so plainly rather than showing an empty office.
+  async function admitted() {
+    const a = await access(true);
+    if (a && a.role) return true;
+    auth.clear();
+    error = 'That email and password are right, but this address has not been ' +
+            'given access yet. Ask David to add you, then sign in again.';
+    note = ''; draw();
+    return false;
+  }
+
   function draw() {
     root.innerHTML = `<div class="login-card">
       <span class="mark">Master Dry Cleaners</span>
       <h1>Driver Runs &mdash; office</h1>
       <p class="sub">${mode === 'in'
-        ? 'Sign in with your work email.'
-        : 'Create your login. Only @hudsongroup.com.au addresses get access, and you&rsquo;ll need to confirm the email.'}</p>
+        ? 'Sign in with the email address you were invited on.'
+        : 'Create your login using the email address you were invited on &mdash; any address works, it does not have to be a work one.'}</p>
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
       ${note ? `<p class="err" style="background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)">${esc(note)}</p>` : ''}
       <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="username" placeholder="you@hudsongroup.com.au">
+      <input id="email" type="email" autocomplete="username" placeholder="you@example.com">
       <label for="pw">Password</label>
       <input id="pw" type="password" autocomplete="${mode === 'in' ? 'current-password' : 'new-password'}">
       <button class="primary" id="go">${mode === 'in' ? 'Sign in' : 'Create login'}</button>
@@ -189,11 +202,20 @@ export function mountLogin(root, onSuccess) {
       const pw = root.querySelector('#pw').value;
       if (!email || !pw) { error = 'Enter your email and password.'; note = ''; return draw(); }
       try {
-        if (mode === 'in') { await signIn(email, pw); onSuccess(); return; }
+        if (mode === 'in') {
+          await signIn(email, pw);
+          if (await admitted()) onSuccess();
+          return;
+        }
         const r = await signUp(email, pw);
-        if (r.access_token) { auth.save(r); onSuccess(); return; }
+        if (r.access_token) {
+          auth.save(r);
+          if (await admitted()) onSuccess();
+          return;
+        }
         mode = 'in'; error = '';
-        note = 'Check your email and click the confirmation link, then sign in.';
+        note = 'Check your email and click the confirmation link, then sign in. ' +
+               'If it does not arrive, ask David to confirm you by hand.';
         draw();
       } catch (err) { error = err.message; note = ''; draw(); }
     };

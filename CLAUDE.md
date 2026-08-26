@@ -32,10 +32,26 @@ table join resolves. What has **not** been exercised is the interaction layer �
 drag-and-drop reordering, the add-stop modal, PIN setting — because they need a
 signed-in session. Expect rough edges there first.
 
-**Adding an office user:** they sign up at `/admin/` with a
-`@hudsongroup.com.au` address. A trigger (`grant_admin_on_confirm`, migration
-0004) grants admin only once the address is CONFIRMED, so a fake address at
-that domain gets nothing.
+**Adding an office user:** access is by **invitation**, not by email domain
+(migration 0012). The address goes on the `invites` list first, with the level
+it gets; then they sign up at `/admin/` with that same address. The
+`grant_admin_on_confirm` trigger reads the invite and grants the level, but
+only once the address is CONFIRMED. Any address works — Jess is on a hotmail
+one. Without an invite a signup gets an auth account and nothing else: no
+`admins` row, and every RLS policy runs through `admins`, so no data at all.
+
+The `@hudsongroup.com.au` rule survives in one place only: the very first
+account ever created is let in as owner, so there is somebody who can write the
+first invite. That has already happened, so it will never fire again.
+
+```sql
+insert into public.invites (business_id, email, role, full_name)
+select id, 'them@example.com', 'admin', 'Their Name'
+  from public.businesses where slug = 'mdc';
+```
+Roles are `owner`, `admin` and `staff`. If they signed up before you invited
+them, run `select apply_invite('them@example.com');` afterwards to grant it.
+There is no screen for any of this yet — it is SQL through the Supabase MCP.
 
 > **Confirmation emails do not arrive.** No SMTP is configured, and Supabase's
 > built-in mailer is rate-limited to a handful of messages and routinely drops
@@ -43,14 +59,14 @@ that domain gets nothing.
 > confirm each new office user by hand:
 > ```sql
 > update auth.users set email_confirmed_at = now()
->  where email = 'them@hudsongroup.com.au' and email_confirmed_at is null;
+>  where email = 'them@example.com' and email_confirmed_at is null;
 > ```
 > The trigger fires on that update and grants admin. Fine for two or three
 > people; configure SMTP before it is more.
 
 **Drivers never use email or passwords.** Name plus a four-digit PIN, through
-the driver RPCs. The domain restriction only ever affects office logins and
-cannot lock a driver out.
+the driver RPCs. The invite list only ever affects office logins and cannot
+lock a driver out.
 
 **Migrations 0005 and 0006 were applied through the Supabase MCP.** The .sql
 files record the schema changes, but several function bodies (driver_login,
