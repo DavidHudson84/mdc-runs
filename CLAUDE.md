@@ -61,9 +61,41 @@ current function definitions rather than trusting the migration files alone.
 **Still to build:** reports (stop-level CSV export, completion by driver,
 customers with repeated issues). Everything else in the original scope is done.
 
-Seeded drivers use placeholder PINs (Kemu 1111, Darren 2222, Sione 3333, Paulo
-4444). Reset them from the admin page once it exists — the house convention is
-the last four digits of the driver's mobile.
+The four drivers are **Kemu, Keith, Binod and Darren**, on the runs Van,
+Werribee, Truck and Darren's Van. They still use placeholder PINs — reset them
+from the Drivers page; the house convention is the last four digits of the
+driver's mobile.
+
+## The real customer list is loaded
+
+Migrations 0013–0015 load the November 2023 run sheets: **83 customers** and a
+**Mon–Sat pattern of about 180 template stops** across the four runs. The two
+source spreadsheets are in `data/`, and `data/build_nov23_import.py` is the
+one-off desk tool that turned them into 0013 and 0014 — change the sheet or the
+tool and regenerate; do not hand-edit those two files.
+
+`customers.external_ref` is the join back to the sheet: `NOV23-nnn` is the line
+number in `data/nov23-all-records.csv`, `C-nnn` came off Kemu's Thursday sheet,
+`MDC-*` are the shops. Re-importing matches on that ref, so it updates rather
+than duplicates.
+
+**Two things the sheets never recorded, and which the office still has to fix:**
+
+- **Which driver does which customer.** Split by suburb — the west on Kemu's
+  van, the city and inner east and south on Darren's, Werribee and Wyndham on
+  Keith's, Geelong on the truck. Geography only; the sheet says nothing about
+  it. The Runs screen has no move-between-runs, so correcting one is a remove
+  and an add.
+- **The order of stops within a day.** Alphabetical, because the master sheet
+  is. The exception is Kemu's Thursday, whose real running order came off his
+  own sheet — that one is right, and 0015 restored it after the import
+  flattened it.
+
+Watch for `admin_remove_route_stop`: it retires a stop by setting
+`active_to`, and Kemu's whole Thursday had been retired that way (every row
+`active_to = active_from = 2026-08-24`) before the import ran. A run that looks
+empty to `ensure_run_day()` may not be empty in the admin grid — check
+`active_to is null` before concluding a day has no pattern.
 
 `run.html?date=YYYY-MM-DD` opens another day and skips the van gate. Used for a
 late run finishing after midnight, and for checking a day from the office.
