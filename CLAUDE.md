@@ -78,9 +78,18 @@ current function definitions rather than trusting the migration files alone.
 customers with repeated issues). Everything else in the original scope is done.
 
 The four drivers are **Kemu, Keith, Binod and Darren**, on the runs Van,
-Werribee, Truck and Darren's Van. They still use placeholder PINs — reset them
-from the Drivers page; the house convention is the last four digits of the
-driver's mobile.
+Werribee, Truck and Darren's Van. All four were issued real PINs on 11 Sep 2026
+and the placeholders are gone.
+
+**A PIN cannot be read back — only reset.** It is stored as a bcrypt hash, so
+nobody, David included, can look up what a driver's PIN currently is. Reset it
+from the Drivers page, or `admin_set_driver_pin(driver_id, '1234')`, which also
+clears any lockout **and signs that driver's devices out** — a reset assumes a
+lost phone, so a driver mid-run will be logged out and needs the new PIN before
+their next one. Never write a live PIN into this repo; it is public.
+
+No mobile numbers are on file for any driver, so the house convention (last four
+digits of the mobile) cannot be applied until `drivers.phone` is populated.
 
 ## The real customer list is loaded
 
