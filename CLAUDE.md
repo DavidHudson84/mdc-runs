@@ -130,7 +130,7 @@ late run finishing after midnight, and for checking a day from the office.
 ## The daily report
 
 Every evening an email goes to whoever is on the `report_recipients` list —
-David and Annelise to start with — saying how the day went: delivered, issues,
+David and Annalise to start with — saying how the day went: delivered, issues,
 what nobody got to, every message the office sent and whether the driver opened
 it, the van checks, and a short list of things somebody has to do something
 about. The same report is on screen at **/admin/daily.html**, with a date picker
