@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#114C9C">
+<title>Daily report — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .tile{padding:16px 20px; border-right:1.5px solid var(--line); border-bottom:1.5px solid var(--line)}
+  .tile:last-child{border-right:0}
+  .tile b{display:block; font-family:"Archivo",sans-serif; font-size:28px; font-weight:700; line-height:1.1}
+  .tile span{font-family:"Archivo",sans-serif; font-size:11.5px; font-weight:600; color:var(--ink-3)}
+  .tile.g b{color:var(--done)} .tile.r b{color:var(--issue)} .tile.a b{color:var(--accent)}
+  .stoplist{list-style:none; margin:0; padding:0}
+  .stoplist li{padding:10px 20px; border-bottom:1.5px solid var(--line)}
+  .stoplist li:last-child{border-bottom:0}
+  .stoplist b{font-weight:700}
+  .stoplist .sub{display:block; color:var(--ink-3); font-size:13px; margin-top:1px}
+  .stoplist .why{color:var(--issue); font-size:13px; font-weight:600}
+  .stoplist .quote{display:block; margin-top:2px}
+  .sendto{padding:12px 20px; border-bottom:1.5px solid var(--line); background:var(--surface-2);
+    color:var(--ink-3); font-size:13px}
+  .unread{color:var(--issue); font-weight:600} .readok{color:var(--done); font-weight:600}
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { db, rpcAdmin, esc, longDate, todayISO, nav, wireNav, mountLogin, auth, access, requireAdmin }
+  from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const REASONS = { nobody_home:'Nobody home', nothing_ready:'Nothing ready', other:'Something else' };
+
+// The exact same report the 7pm email is built from -- one function in the
+// database, so what is on this screen and what lands in David's inbox can
+// never disagree.
+let date = new URLSearchParams(location.search).get('date') || todayISO();
+let r = null, busy = false, err = '', copied = false;
+
+async function load() {
+  busy = true; err = ''; render();
+  try { r = await rpcAdmin('daily_report', { p_business_slug:'mdc', p_date: date }); }
+  catch (e) { err = e.message; r = null; }
+  busy = false; render();
+}
+
+/* ── the same thing as plain text, for pasting into WhatsApp ─────────────── */
+
+function asText() {
+  const t = r.totals || {};
+  const L = [`Runs — ${r.date_long}`, '',
+    `Delivered ${t.done || 0} · Issues ${t.issue || 0} · Missed ${t.pending || 0}` +
+    ` · Completion ${t.completion == null ? '—' : t.completion + '%'}`];
+  if (r.attention?.length) L.push('', 'NEEDS ACTION', ...r.attention.map(a => '• ' + a));
+  if (r.missed?.length) L.push('', `NOT DONE (${r.missed.length})`,
+    ...r.missed.map(m => `• ${m.customer}${m.suburb ? ', ' + m.suburb : ''} — ${m.run}, ${m.driver}`));
+  if (r.issues?.length) L.push('', `PROBLEMS (${r.issues.length})`,
+    ...r.issues.map(i => `• ${i.customer} — ${REASONS[i.reason] || i.reason}` +
+      (i.note ? `: "${i.note}"` : '') + ` (${i.at}, ${i.driver})`));
+  L.push('', 'RUN BY RUN', ...(r.runs || []).map(x =>
+    `• ${x.run} (${x.driver}): ${x.done} done, ${x.issue} issue, ${x.pending} left — ` +
+    (x.status === 'cancelled' ? 'cancelled'
+      : !x.started ? 'never opened'
+      : x.started + (x.finished ? '–' + x.finished : ', not finished'))));
+  return L.join('\n');
+}
+
+/* ── view ────────────────────────────────────────────────────────────────── */
+
+function panel(title, sub, inner, cls = '') {
+  return `<div class="panel ${cls}"><header><div><h2>${esc(title)}</h2>
+    ${sub ? `<span class="when">${esc(sub)}</span>` : ''}</div></header>${inner}</div>`;
+}
+
+function render() {
+  const head = `${nav('daily.html')}<div class="wrap">
+    <div class="panel">
+      <header>
+        <div><h2>Daily report</h2>
+          <span class="when">${esc(longDate(date))} &middot; exactly what the evening email says</span></div>
+        <div class="datectl">
+          <input type="date" id="date" value="${date}">
+          <button class="btn" id="jump">Go</button>
+          ${r ? `<button class="btn" id="copy">${copied ? 'Copied' : 'Copy as text'}</button>` : ''}
+        </div>
+      </header>`;
+
+  if (busy && !r) { root.innerHTML = head + `<div class="empty">Loading&hellip;</div></div></div>`;
+    return wire(); }
+  if (err) { root.innerHTML = head + `<p class="err" style="margin:14px 20px">${esc(err)}</p></div></div>`;
+    return wire(); }
+  if (!r) { root.innerHTML = head + `</div></div>`; return wire(); }
+
+  const t = r.totals || {};
+  const P = [];
+
+  P.push(`<div class="sendto">Emailed each evening to ${
+    (r.recipients || []).map(x => esc(x.email)).join(', ') || 'nobody yet'}.</div>
+    <div class="tiles">
+      <div class="tile g"><b class="num">${t.done || 0}</b><span>DELIVERED</span></div>
+      <div class="tile ${t.issue ? 'r' : ''}"><b class="num">${t.issue || 0}</b><span>ISSUES</span></div>
+      <div class="tile ${t.pending ? 'r' : ''}"><b class="num">${t.pending || 0}</b><span>MISSED</span></div>
+      <div class="tile a"><b class="num">${t.completion == null ? '—' : t.completion + '%'}</b><span>COMPLETION</span></div>
+    </div></div>`);
+
+  if (!t.stops) P.push(panel('Nothing on the board',
+    '', `<div class="empty">No stops for ${esc(longDate(date))}.
+      Either no runs go out that day, or the weekly pattern has nothing set for it.</div>`));
+
+  if (r.attention?.length) P.push(panel('Needs someone to do something', '',
+    `<ul class="stoplist">${r.attention.map(a =>
+      `<li><span class="why">&#9679;</span> ${esc(a)}</li>`).join('')}</ul>`));
+
+  if (r.missed?.length) P.push(panel(`Not done — ${r.missed.length} stop${r.missed.length === 1 ? '' : 's'}`,
+    'Still sitting there when the day ended.',
+    `<ul class="stoplist">${r.missed.map(m => `<li><b>${esc(m.customer)}</b>${
+      m.suburb ? ` <span class="dim">${esc(m.suburb)}</span>` : ''}${
+      m.adhoc ? ' <span class="badge">added today</span>' : ''}
+      <span class="sub">${esc(m.run)} &middot; ${esc(m.driver)}${
+        m.phone ? ' &middot; ' + esc(m.phone) : ''}</span></li>`).join('')}</ul>`));
+
+  if (r.issues?.length) P.push(panel(`Problems reported — ${r.issues.length}`,
+    'What the driver hit, in their words.',
+    `<ul class="stoplist">${r.issues.map(i => `<li><b>${esc(i.customer)}</b>${
+      i.suburb ? ` <span class="dim">${esc(i.suburb)}</span>` : ''}
+      <span class="why"> — ${esc(REASONS[i.reason] || i.reason || 'Issue')}</span>
+      ${i.note ? `<span class="quote">&ldquo;${esc(i.note)}&rdquo;</span>` : ''}
+      <span class="sub">${esc(i.at || '')} &middot; ${esc(i.run)} &middot; ${esc(i.driver)}${
+        i.phone ? ' &middot; ' + esc(i.phone) : ''}</span></li>`).join('')}</ul>`));
+
+  P.push(panel('Run by run', 'Out is when they opened the app and when they pressed Finish.',
+    `<div class="tablewrap"><table>
+      <thead><tr><th>Run</th><th>Driver</th><th>Van</th><th>Done</th><th>Issues</th>
+        <th>Left</th><th>Out</th></tr></thead>
+      <tbody>${(r.runs || []).map(x => `<tr>
+        <td class="nm">${esc(x.run)}</td>
+        <td>${esc(x.driver)}</td>
+        <td class="dim">${esc(x.rego || '—')}</td>
+        <td class="num">${x.done}</td>
+        <td class="num">${x.issue || '—'}</td>
+        <td class="num">${x.pending || '—'}</td>
+        <td class="dim">${
+          x.status === 'cancelled' ? 'Cancelled' + (x.cancel_reason ? ' — ' + esc(x.cancel_reason) : '')
+          : !x.started ? '<span class="badge bad">never opened</span>'
+          : esc(x.started) + (x.finished ? '–' + esc(x.finished)
+              : ' <span class="badge warn">not finished</span>')}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">No runs generated.</td></tr>'}
+      </tbody></table></div>`));
+
+  if (r.messages?.length) P.push(panel('Messages to drivers',
+    'In-app only — a phone in a pocket shows nothing until they open it.',
+    `<ul class="stoplist">${r.messages.map(m => `<li><b>To ${esc(m.to)}</b>
+      <span class="dim">sent ${esc(m.sent || '')}${m.sent_by ? ' by ' + esc(m.sent_by) : ''}</span>
+      <span class="quote">&ldquo;${esc(m.body)}&rdquo;</span>
+      <span class="sub ${m.read ? 'readok' : 'unread'}">${m.read
+        ? 'Read ' + esc(m.read) + (m.reply ? ' — replied &ldquo;' + esc(m.reply) + '&rdquo;' : '')
+        : 'Not read yet'}</span></li>`).join('')}</ul>`));
+
+  if (r.van_checks?.length) P.push(panel('Vans', 'The once-a-day check, and what the odometer said.',
+    `<ul class="stoplist">${r.van_checks.map(v => `<li>
+      <b>${esc(v.van || 'Van')}</b> <span class="dim">${esc(v.rego || '')} &middot; ${esc(v.driver || '')}</span>
+      <span class="sub">${
+        v.skipped ? 'Check skipped' + (v.skip_reason ? ' — ' + esc(v.skip_reason) : '')
+        : v.failed ? '<span class="why">Fault reported — ' + esc(v.faults || '') + '</span>'
+        : 'Check done'}${v.odometer != null
+          ? ' &middot; ' + Number(v.odometer).toLocaleString('en-AU') + ' km' : ''}</span></li>`).join('')}</ul>`));
+
+  if (r.removed?.length) P.push(panel('Taken off the run by the office', '',
+    `<ul class="stoplist">${r.removed.map(x => `<li><b>${esc(x.customer)}</b>
+      <span class="sub">${esc(x.run)}${x.reason ? ' &middot; ' + esc(x.reason) : ''}</span></li>`).join('')}</ul>`));
+
+  root.innerHTML = head + P.join('') + `</div>`;
+  wire();
+}
+
+function wire() {
+  wireNav();
+  const $ = s => root.querySelector(s);
+  const d = $('#date'); if (d) d.addEventListener('change', e => { date = e.target.value; });
+  const j = $('#jump'); if (j) j.addEventListener('click', () => {
+    history.replaceState(null, '', `daily.html?date=${date}`); load();
+  });
+  const c = $('#copy'); if (c) c.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(asText()); copied = true; render();
+          setTimeout(() => { copied = false; render(); }, 2000); }
+    catch { /* clipboard blocked -- nothing useful to say about it */ }
+  });
+}
+
+async function boot() {
+  if (!auth.token) return mountLogin(root, boot);
+  try {
+    await access();
+    if (!(await requireAdmin(root))) return;
+    await load();
+  } catch (e) {
+    if (/Signed out/.test(e.message)) return mountLogin(root, boot);
+    root.innerHTML = `${nav('daily.html')}<div class="wrap"><div class="panel">
+      <div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

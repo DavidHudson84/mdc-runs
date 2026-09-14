@@ -74,8 +74,10 @@ driver_today, driver_mark_loaded, admin_create_driver, list_drivers_for_picker)
 live only in the database and in git history. Before any fresh deploy, dump the
 current function definitions rather than trusting the migration files alone.
 
-**Still to build:** reports (stop-level CSV export, completion by driver,
-customers with repeated issues). Everything else in the original scope is done.
+**Still to build:** nothing from the original scope. Reports are done — the
+Reports screen covers a date range (stop-level CSV export, completion by driver,
+customers with repeated issues) and the Daily report covers one day and is
+emailed out each evening.
 
 The four drivers are **Kemu, Keith, Binod and Darren**, on the runs Van,
 Werribee, Truck and Darren's Van. All four were issued real PINs on 11 Sep 2026
@@ -124,6 +126,68 @@ empty to `ensure_run_day()` may not be empty in the admin grid — check
 
 `run.html?date=YYYY-MM-DD` opens another day and skips the van gate. Used for a
 late run finishing after midnight, and for checking a day from the office.
+
+## The daily report
+
+Every evening an email goes to whoever is on the `report_recipients` list —
+David and Annalise to start with — saying how the day went: delivered, issues,
+what nobody got to, every message the office sent and whether the driver opened
+it, the van checks, and a short list of things somebody has to do something
+about. The same report is on screen at **/admin/daily.html**, with a date picker
+and a Copy-as-text button for pasting into WhatsApp.
+
+Three pieces, and only three:
+
+- **`daily_report(slug, date)`** (migration 0016) does all of the work and
+  returns one jsonb blob. The screen and the email both call it, so they cannot
+  disagree. It is read-only — it decides nothing and writes nothing, which is
+  what makes it safe to run unattended.
+- **`scripts/daily-report.mjs`** turns that blob into an email and posts it to
+  Resend. Plain Node, no packages, nothing to install. Change the wording of the
+  email here.
+- **`.github/workflows/daily-report.yml`** runs it at 09:00 UTC, Monday to
+  Saturday — 7pm Melbourne in winter, 8pm in summer. Late enough that every run
+  is off the road, so "never finished the run" in the report means the driver
+  really did forget to press Finish.
+
+**This is the one scheduled job in the project.** Rule "no cron" was about run
+generation — runs still build themselves the moment somebody opens the app, and
+nothing about the report changes that. An email that arrives at a set time has
+to be fired by something, and a GitHub Action is the cheapest thing that does
+it: no Edge Function, no pg_cron, no extra hosting, no build step, and the run
+history is visible in the repo's Actions tab.
+
+**To send a day by hand** (or re-send one): Actions → Daily run report → Run
+workflow, and put a date in. Leave it blank for today. Tick "dry run" to see
+what it would say without sending it.
+
+**Two repository secrets make it work**, under Settings → Secrets and variables
+→ Actions. Neither is ever written into the repo, which is public:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `SUPABASE_SERVICE_KEY` | Supabase dashboard → Project settings → API keys |
+| `RESEND_API_KEY` | resend.com → API keys, sending permission only |
+
+The from-address defaults to `sameday@hangr.au` because that domain is already
+verified in Resend. To send as Master Dry Cleaners instead, verify the domain in
+Resend and set a repository **variable** (not a secret) called `REPORT_FROM`,
+e.g. `SameDay <runs@masterdrycleaners.com.au>`.
+
+**Adding or removing a recipient** is one line of SQL, the same as invites —
+there is no screen for it:
+
+```sql
+insert into public.report_recipients (business_id, email, full_name)
+select id, 'them@example.com', 'Their Name'
+  from public.businesses where slug = 'mdc';
+
+update public.report_recipients set is_active = false
+ where lower(email) = 'them@example.com';
+```
+
+Set `is_active = false` rather than deleting, so it stays obvious later that
+somebody used to be on the list.
 
 ## Scope — this project only
 
