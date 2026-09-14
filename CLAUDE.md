@@ -169,10 +169,21 @@ what it would say without sending it.
 | `SUPABASE_SERVICE_KEY` | Supabase dashboard → Project settings → API keys |
 | `RESEND_API_KEY` | resend.com → API keys, sending permission only |
 
-The from-address defaults to `sameday@hangr.au` because that domain is already
-verified in Resend. To send as Master Dry Cleaners instead, verify the domain in
-Resend and set a repository **variable** (not a secret) called `REPORT_FROM`,
-e.g. `SameDay <runs@masterdrycleaners.com.au>`.
+The from-address defaults to `noreply@hangr.au`. It started as `sameday@`, and
+the first two reports were accepted by Microsoft and then never reached the
+mailbox -- not the inbox, not Junk, not any folder. That is Defender
+quarantine, which holds a message outside the mailbox where no search finds it.
+A brand-new sending address has no reputation with the tenant; `noreply@` has
+already delivered to it.
+
+**If a report goes missing, look in quarantine first**, at
+https://security.microsoft.com/quarantine -- not in Junk. Release it and choose
+to allow the sender, which is what actually stops it recurring.
+
+To send as Master Dry Cleaners, verify that domain in Resend and set a
+repository **variable** (not a secret) called `REPORT_FROM`, e.g.
+`SameDay <runs@masterdrycleaners.com.au>`. Mail from a domain the office already
+recognises is the real fix; `hangr.au` is a stopgap.
 
 **Adding or removing a recipient** is one line of SQL, the same as invites —
 there is no screen for it:

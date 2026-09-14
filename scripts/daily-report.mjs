@@ -17,7 +17,12 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://gfvybedbfeguhizzgrow.supabase.co';
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_KEY;   // GitHub secret, never committed
 const RESEND_KEY   = process.env.RESEND_API_KEY;         // GitHub secret, never committed
-const FROM         = process.env.REPORT_FROM || 'SameDay <sameday@hangr.au>';
+// noreply@hangr.au, not a fresh sameday@ address. The first two reports were
+// accepted by Microsoft and then never reached the mailbox -- the signature of
+// Defender quarantine, which holds a message outside the mailbox entirely. A
+// brand-new sending address has no reputation with the tenant; this one has
+// already delivered to it. Override with the REPORT_FROM repository variable.
+const FROM         = process.env.REPORT_FROM || 'SameDay — Master Dry Cleaners <noreply@hangr.au>';
 const SLUG         = process.env.BUSINESS_SLUG || 'mdc';
 const ADMIN_URL    = 'https://davidhudson84.github.io/mdc-runs/admin/daily.html';
 const DRY_RUN      = !!process.env.DRY_RUN;
