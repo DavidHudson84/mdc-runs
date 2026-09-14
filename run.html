@@ -30,6 +30,7 @@ let screen = 'loading';   // loading | van | run
 let stale = null;         // timestamp when showing a cached run
 let error = '';
 let sheet = null;         // { stopId, name, reason, note }
+let finishAsk = false;    // last stop just ticked -- nudge them to close the run
 let inbox = [], replyText = '';
 let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{}, showAll:false };
 
@@ -202,6 +203,11 @@ function merged(stop) {
   return o ? { ...stop, ...o } : stop;
 }
 
+function pendingTickable() {
+  return (data.runs || []).flatMap(r => r.stops).map(merged)
+    .filter(s => s.tickable && s.status === 'pending').length;
+}
+
 function stopHTML(raw) {
   const s = merged(raw);
   const isMarker = s.kind !== 'customer';
@@ -310,7 +316,8 @@ function renderRun() {
     </div>
 
     ${(tickable.length && pendingCount === 0) ? `<button class="finish" id="finish">Finish run</button>` : ''}
-    ${sheet ? sheetHTML() : ''}`;
+    ${sheet ? sheetHTML() : ''}
+    ${(finishAsk && !sheet) ? finishAskHTML() : ''}`;
 
   app.querySelectorAll('[data-done]').forEach(b =>
     b.addEventListener('click', () => mark(b.dataset.done, 'done')));
@@ -331,6 +338,7 @@ function renderRun() {
   if (fin) fin.addEventListener('click', finish);
   app.querySelector('#signout').addEventListener('click', signOut);
   wireSheet();
+  wireFinishAsk();
 }
 
 function sheetHTML() {
@@ -349,6 +357,30 @@ function sheetHTML() {
   </div></div>`;
 }
 
+// Every stop is ticked but the run is not closed until Finish run is tapped,
+// and the button lives at the bottom of a long list where nobody looks. Binod
+// ticked all 16 stops on the first real day and never hit it. So ask.
+function finishAskHTML() {
+  return `<div class="sheet-bg" id="finbg"><div class="sheet">
+    <h3>That&rsquo;s every stop ticked</h3>
+    <p class="for">Finished for the day? Hit Finish run so the office knows
+      you&rsquo;re done and can close off the paperwork.</p>
+    <div class="sheetacts">
+      <button class="btn-ghost" id="notyet">Not yet</button>
+      <button class="btn-solid" id="finishnow">Finish run</button>
+    </div>
+  </div></div>`;
+}
+
+function wireFinishAsk() {
+  if (!finishAsk || sheet) return;
+  app.querySelector('#notyet').addEventListener('click', () => { finishAsk = false; render(); });
+  app.querySelector('#finishnow').addEventListener('click', () => { finishAsk = false; finish(); });
+  app.querySelector('#finbg').addEventListener('click', e => {
+    if (e.target.id === 'finbg') { finishAsk = false; render(); }
+  });
+}
+
 function wireSheet() {
   if (!sheet) return;
   app.querySelectorAll('.opt').forEach(b =>
@@ -358,19 +390,23 @@ function wireSheet() {
   app.querySelector('#bg').addEventListener('click', e => { if (e.target.id === 'bg') { sheet = null; render(); } });
   app.querySelector('#save').addEventListener('click', () => {
     if (!sheet.reason) return;
-    mark(sheet.stopId, 'issue', sheet.reason, sheet.note);
+    const { stopId, reason, note } = sheet;
     sheet = null;
+    mark(stopId, 'issue', reason, note);
   });
 }
 
 /* ── actions (optimistic, then queued) ───────────────────────────────────── */
 
 function mark(stopId, status, reason, note) {
+  const before = pendingTickable();
   local.set(stopId, {
     status, issue_reason: reason || null, issue_note: (note || '').trim() || null,
     marked_at: new Date().toISOString()
   });
   queueAction({ type:'mark', stopId, status, reason, note });
+  // only on the transition, so it asks once rather than on every later render
+  if (before > 0 && pendingTickable() === 0) finishAsk = true;
   render();
 }
 
@@ -382,6 +418,7 @@ function markLoaded(stopId, loaded) {
 }
 
 function undo(stopId) {
+  finishAsk = false;
   local.set(stopId, { status:'pending', issue_reason:null, issue_note:null, marked_at:null });
   queueAction({ type:'undo', stopId });
   render();
