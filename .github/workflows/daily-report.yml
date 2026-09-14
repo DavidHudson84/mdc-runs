@@ -1,0 +1,61 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# The daily run report email.
+#
+# Runs at 09:00 UTC, Monday to Saturday. That is 7pm in Melbourne in winter
+# and 8pm in summer -- deliberately late enough that every run is off the road
+# either way, and late enough that "still not finished" in the report means
+# the driver really did forget to press Finish. GitHub only speaks UTC, so
+# the hour drifts by one with daylight saving and nothing else changes.
+#
+# To send a day by hand: Actions -> Daily run report -> Run workflow, and put
+# a date in (or leave it blank for today).
+#
+# Two repository secrets make it work. Settings -> Secrets and variables ->
+# Actions:
+#   SUPABASE_SERVICE_KEY  the service key from the Supabase dashboard
+#   RESEND_API_KEY        a sending key from resend.com
+# Neither is ever written into the repo -- this repo is public.
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: Daily run report
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-6'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Day to report on (YYYY-MM-DD). Blank means today.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Print it instead of sending it'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No npm install: the script uses nothing but what Node ships with.
+      - name: Build and send the report
+        env:
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          REPORT_FROM: ${{ vars.REPORT_FROM }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/daily-report.mjs ${{ inputs.date }}

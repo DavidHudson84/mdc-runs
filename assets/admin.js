@@ -129,6 +129,7 @@ export function nav(current) {
     ['runs.html', 'Runs', false],
     ['calendar.html', 'Calendar', false],
     ['customers.html', 'Customers', false],
+    ['daily.html', 'Daily report', true],
     ['reports.html', 'Reports', true],
     ['import.html', 'Import', true],
     ['drivers.html', 'Drivers', true],
