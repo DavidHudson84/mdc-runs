@@ -145,10 +145,24 @@ Three pieces, and only three:
 - **`scripts/daily-report.mjs`** turns that blob into an email and posts it to
   Resend. Plain Node, no packages, nothing to install. Change the wording of the
   email here.
-- **`.github/workflows/daily-report.yml`** runs it at 09:00 UTC, Monday to
-  Saturday — 7pm Melbourne in winter, 8pm in summer. Late enough that every run
-  is off the road, so "never finished the run" in the report means the driver
-  really did forget to press Finish.
+- **`.github/workflows/daily-report.yml`** runs it at 09:17 UTC, Monday to
+  Saturday — 7:17pm Melbourne in winter, 8:17pm in summer. Late enough that
+  every run is off the road, so "never finished the run" in the report means
+  the driver really did forget to press Finish.
+
+**GitHub's scheduler is not punctual, and the report is built to survive it.**
+The first scheduled report was due at 7pm Monday and fired at 1:38am Tuesday —
+six and a half hours late — and reported an empty Tuesday, because it had asked
+for "today" and today had ticked over. Delays like that cannot be prevented;
+GitHub queues scheduled work and the top of the hour is the busiest moment,
+which is why the cron sits at 17 minutes past. What can be fixed is the
+consequence: `serviceDate()` in the script decides which day the report covers
+from the Melbourne clock, and a run before midday is treated as a late report
+for the day before. So a delayed report is still the right day's report. An
+explicit date on the command line always wins over that rule.
+`node scripts/daily-report.test.mjs` checks the rule against eleven fire
+times, the real 1:38am failure and the night the clocks change among them.
+No packages, no runner — it is plain Node, like everything else here.
 
 **This is the one scheduled job in the project.** Rule "no cron" was about run
 generation — runs still build themselves the moment somebody opens the app, and
@@ -170,15 +184,20 @@ what it would say without sending it.
 | `RESEND_API_KEY` | resend.com → API keys, sending permission only |
 
 The from-address defaults to `noreply@hangr.au`. It started as `sameday@`, and
-the first two reports were accepted by Microsoft and then never reached the
-mailbox -- not the inbox, not Junk, not any folder. That is Defender
-quarantine, which holds a message outside the mailbox where no search finds it.
-A brand-new sending address has no reputation with the tenant; `noreply@` has
-already delivered to it.
+the first two reports were accepted by Microsoft and then vanished -- not the
+inbox, not Junk, not any folder, and **not quarantine either**, which was
+checked. Switching to `noreply@` fixed it immediately.
 
-**If a report goes missing, look in quarantine first**, at
-https://security.microsoft.com/quarantine -- not in Junk. Release it and choose
-to allow the sender, which is what actually stops it recurring.
+What it actually was: something files bulk-looking mail straight into Deleted
+Items. On that day four promotional emails landed there, along with an older
+`letters@hangr.au` test from August, while the inbox had nothing newer. David
+runs Fyxer AI on Outlook, which sorts mail after delivery; a daily no-reply
+HTML email is exactly the shape it treats as marketing. `noreply@` got through
+because it had already delivered to that mailbox before.
+
+**If a report goes missing, look in Deleted Items**, not Junk and not
+quarantine. The durable fixes are `hangr.au` on the Outlook safe-senders list,
+and eventually sending from a domain the office already trusts.
 
 To send as Master Dry Cleaners, verify that domain in Resend and set a
 repository **variable** (not a secret) called `REPORT_FROM`, e.g.
