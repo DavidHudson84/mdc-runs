@@ -14,6 +14,9 @@
 //   DRY_RUN=1 node scripts/daily-report.mjs    print it instead of sending
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://gfvybedbfeguhizzgrow.supabase.co';
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_KEY;   // GitHub secret, never committed
 const RESEND_KEY   = process.env.RESEND_API_KEY;         // GitHub secret, never committed
@@ -26,7 +29,34 @@ const FROM         = process.env.REPORT_FROM || 'SameDay — Master Dry Cleaners
 const SLUG         = process.env.BUSINESS_SLUG || 'mdc';
 const ADMIN_URL    = 'https://davidhudson84.github.io/mdc-runs/admin/daily.html';
 const DRY_RUN      = !!process.env.DRY_RUN;
-const date         = process.argv[2] || null;
+const TZ           = 'Australia/Melbourne';
+
+/* ── which day the report covers ─────────────────────────────────────────── */
+// Never "whatever today is when this happens to run". GitHub's scheduler is
+// not punctual -- the first scheduled report was due at 7pm Monday and fired
+// at 1:38am Tuesday, six and a half hours late, by which time "today" had
+// ticked over and it reported an empty Tuesday.
+//
+// So the report always covers the day whose runs have just finished. Fired in
+// the evening, that is today. Fired in the small hours or the morning, it is a
+// late evening report, so it is yesterday. Midday is the cutoff: past that,
+// a delay is so long that the current day's runs are the more useful answer.
+//
+// An explicit date on the command line always wins -- that is how the office
+// re-sends a particular day.
+
+export function serviceDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23'
+  }).formatToParts(now);
+  const at = k => parts.find(p => p.type === k).value;
+  const day = new Date(`${at('year')}-${at('month')}-${at('day')}T00:00:00Z`);
+  if (Number(at('hour')) < 12) day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
+const date         = process.argv[2] || serviceDate();
 
 const REASONS = {
   nobody_home: 'Nobody home',
@@ -261,27 +291,34 @@ async function send(to, subject, html, text) {
 }
 
 /* ── go ──────────────────────────────────────────────────────────────────── */
+// Only when run directly, so the date rule above can be imported and checked
+// on its own. Which day the report covers is the one thing here worth being
+// certain about -- getting it wrong sends an empty report for the wrong day.
 
-const r = await fetchReport();
-const t = r.totals || {};
+async function main() {
+  const r = await fetchReport();
+  const t = r.totals || {};
 
-// A subject line that can be read from the lock screen without opening it.
-const bits = [`${t.done ?? 0} delivered`];
-if (t.pending) bits.push(`${t.pending} missed`);
-if (t.issue) bits.push(`${t.issue} issue${t.issue === 1 ? '' : 's'}`);
-const subject = `Runs ${r.weekday} ${String(r.date).slice(8,10)}/${String(r.date).slice(5,7)} — ${bits.join(', ')}`;
+  // A subject line that can be read from the lock screen without opening it.
+  const bits = [`${t.done ?? 0} delivered`];
+  if (t.pending) bits.push(`${t.pending} missed`);
+  if (t.issue) bits.push(`${t.issue} issue${t.issue === 1 ? '' : 's'}`);
+  const subject = `Runs ${r.weekday} ${String(r.date).slice(8,10)}/${String(r.date).slice(5,7)} — ${bits.join(', ')}`;
 
-const html = buildHtml(r);
-const text = buildText(r);
-const to = (r.recipients || []).map(x => x.email);
+  const html = buildHtml(r);
+  const text = buildText(r);
+  const to = (r.recipients || []).map(x => x.email);
 
-if (DRY_RUN) {
-  console.log(subject); console.log(''); console.log(text);
-  console.log(`\n[dry run] would go to: ${to.join(', ') || '(nobody)'}`);
-  if (process.env.DRY_RUN_HTML) console.log('\n' + html);
-} else if (!to.length) {
-  console.log('Nobody on the recipient list — nothing sent.');
-} else {
-  const out = await send(to, subject, html, text);
-  console.log(`Sent to ${to.join(', ')} (${out.id})`);
+  if (DRY_RUN) {
+    console.log(subject); console.log(''); console.log(text);
+    console.log(`\n[dry run] would go to: ${to.join(', ') || '(nobody)'}`);
+    if (process.env.DRY_RUN_HTML) console.log('\n' + html);
+  } else if (!to.length) {
+    console.log('Nobody on the recipient list — nothing sent.');
+  } else {
+    const out = await send(to, subject, html, text);
+    console.log(`Sent to ${to.join(', ')} (${out.id})`);
+  }
 }
+
+if (fileURLToPath(import.meta.url) === resolve(process.argv[1] || '')) await main();

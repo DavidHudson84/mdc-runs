@@ -1,11 +1,21 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # The daily run report email.
 #
-# Runs at 09:00 UTC, Monday to Saturday. That is 7pm in Melbourne in winter
-# and 8pm in summer -- deliberately late enough that every run is off the road
-# either way, and late enough that "still not finished" in the report means
-# the driver really did forget to press Finish. GitHub only speaks UTC, so
-# the hour drifts by one with daylight saving and nothing else changes.
+# Runs at 09:17 UTC, Monday to Saturday. That is 7:17pm in Melbourne in winter
+# and 8:17pm in summer -- late enough that every run is off the road either
+# way, so "still not finished" in the report means the driver really did
+# forget to press Finish. GitHub only speaks UTC, so the hour drifts by one
+# with daylight saving and nothing else changes.
+#
+# Seventeen minutes past, not on the hour, because GitHub delays scheduled
+# workflows when its queue is busy and the top of every hour is the worst of
+# it. The first scheduled report was due at 7pm and fired at 1:38am, six and
+# a half hours late.
+#
+# That delay cannot be prevented, only survived: the script works out which
+# day it is reporting on from the Melbourne clock, and treats a run before
+# midday as a late report for the day before. So a delayed report is still
+# the right day's report.
 #
 # To send a day by hand: Actions -> Daily run report -> Run workflow, and put
 # a date in (or leave it blank for today).
@@ -21,7 +31,7 @@ name: Daily run report
 
 on:
   schedule:
-    - cron: '0 9 * * 1-6'
+    - cron: '17 9 * * 1-6'
   workflow_dispatch:
     inputs:
       date:
