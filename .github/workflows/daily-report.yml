@@ -1,24 +1,43 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # The daily run report email.
 #
-# Runs at 09:17 UTC, Monday to Saturday. That is 7:17pm in Melbourne in winter
-# and 8:17pm in summer -- late enough that every run is off the road either
-# way, so "still not finished" in the report means the driver really did
-# forget to press Finish. GitHub only speaks UTC, so the hour drifts by one
-# with daylight saving and nothing else changes.
+# It is meant to land about 7pm, in time to sort out the next day before
+# everyone goes home.
 #
-# Seventeen minutes past, not on the hour, because GitHub delays scheduled
-# workflows when its queue is busy and the top of every hour is the worst of
-# it. The first scheduled report was due at 7pm and fired at 1:38am, six and
-# a half hours late.
+# GitHub's scheduler will not do that on its own. It queues scheduled
+# workflows and runs them when it has room -- the first scheduled report was
+# due at 7pm and fired at 1:38am, six and a half hours late. That delay cannot
+# be prevented, so this stops trying once and tries six times instead, half an
+# hour apart across the evening. Whichever attempt actually gets a runner sends
+# the report; the rest find the day already done and stop.
 #
-# That delay cannot be prevented, only survived: the script works out which
-# day it is reporting on from the Melbourne clock, and treats a run before
-# midday as a late report for the day before. So a delayed report is still
-# the right day's report.
+# All six would have to be delayed together for the report to be late, which
+# turns a six-hour miss into a thirty-minute one.
+#
+# GitHub only speaks UTC. Melbourne is UTC+10 in winter and UTC+11 in summer,
+# so in winter the first two attempts land before the vans are in -- the script
+# holds those off and the 08:52 one (6:52pm) sends. In summer the 07:52 one is
+# already 6:52pm and sends. Nothing changes at the clock change; the script
+# works the local time out for itself.
+#
+#   07:52 UTC   5:52pm winter   6:52pm summer
+#   08:22 UTC   6:22pm          7:22pm
+#   08:52 UTC   6:52pm          7:52pm
+#   09:22 UTC   7:22pm          8:22pm
+#   09:52 UTC   7:52pm          8:52pm
+#   10:22 UTC   8:22pm          9:22pm
+#
+# Minutes past the half hour, never on the hour, because the top of the hour is
+# when GitHub's queue is longest.
+#
+# One email a day is guaranteed by the database, not by this file:
+# claim_report_send() hands the right to send one day's report to exactly one
+# attempt (migration 0019). An attempt that claims the day and then dies goes
+# stale after ten minutes and the next one picks it up.
 #
 # To send a day by hand: Actions -> Daily run report -> Run workflow, and put
-# a date in (or leave it blank for today).
+# a date in (or leave it blank for tonight's). A date typed here ignores both
+# the clock and the once-a-day guard, because somebody meant it.
 #
 # Two repository secrets make it work. Settings -> Secrets and variables ->
 # Actions:
@@ -31,11 +50,16 @@ name: Daily run report
 
 on:
   schedule:
-    - cron: '17 9 * * 1-6'
+    - cron: '52 7 * * 1-6'
+    - cron: '22 8 * * 1-6'
+    - cron: '52 8 * * 1-6'
+    - cron: '22 9 * * 1-6'
+    - cron: '52 9 * * 1-6'
+    - cron: '22 10 * * 1-6'
   workflow_dispatch:
     inputs:
       date:
-        description: 'Day to report on (YYYY-MM-DD). Blank means today.'
+        description: 'Day to report on (YYYY-MM-DD). Blank means tonight.'
         required: false
         type: string
       dry_run:
@@ -62,10 +86,15 @@ jobs:
           node-version: '22'
 
       # No npm install: the script uses nothing but what Node ships with.
+      #
+      # The date goes in through the environment rather than into the command
+      # line. Anything typed into a workflow_dispatch box is text somebody
+      # typed, and text somebody typed does not belong in a shell command.
       - name: Build and send the report
         env:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           REPORT_FROM: ${{ vars.REPORT_FROM }}
+          REPORT_DATE: ${{ inputs.date }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
-        run: node scripts/daily-report.mjs ${{ inputs.date }}
+        run: node scripts/daily-report.mjs

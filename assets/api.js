@@ -72,13 +72,17 @@ export const api = {
             },
   logout:   ()                => rpc('driver_logout', { p_token: session.token }),
   vanOptions: ()              => rpc('driver_vehicle_options', { p_token: session.token }),
+  // p_override: the driver has looked at the dash again and says the reading
+  // is right. Without it an odometer that does not follow on from the last one
+  // comes back as SQLSTATE P0002 for the app to query -- see run.html.
   startVan: (opts)            => rpc('driver_start_vehicle_log', {
                                    p_token: session.token,
                                    p_vehicle_id: opts.vehicleId,
                                    p_odometer: opts.odometer ?? null,
                                    p_answers: opts.answers || [],
                                    p_skipped: !!opts.skipped,
-                                   p_skip_reason: opts.skipReason || null
+                                   p_skip_reason: opts.skipReason || null,
+                                   p_override: !!opts.override
                                  }),
   closeVan: (odo)             => rpc('driver_close_vehicle_log', {
                                    p_token: session.token, p_odometer: odo ?? null

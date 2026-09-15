@@ -171,7 +171,10 @@ function render() {
         v.skipped ? 'Check skipped' + (v.skip_reason ? ' — ' + esc(v.skip_reason) : '')
         : v.failed ? '<span class="why">Fault reported — ' + esc(v.faults || '') + '</span>'
         : 'Check done'}${v.odometer != null
-          ? ' &middot; ' + Number(v.odometer).toLocaleString('en-AU') + ' km' : ''}</span></li>`).join('')}</ul>`));
+          ? ' &middot; ' + Number(v.odometer).toLocaleString('en-AU') + ' km' : ''}${
+        v.odometer_overridden && v.odometer_prev != null
+          ? '<span class="why"> &middot; driver confirmed this past the check — last reading was '
+            + Number(v.odometer_prev).toLocaleString('en-AU') + ' km</span>' : ''}</span></li>`).join('')}</ul>`));
 
   if (r.removed?.length) P.push(panel('Taken off the run by the office', '',
     `<ul class="stoplist">${r.removed.map(x => `<li><b>${esc(x.customer)}</b>
