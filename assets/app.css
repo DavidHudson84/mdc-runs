@@ -78,6 +78,15 @@ input{font:inherit; color:inherit}
 .key.ghost{background:none; border-color:transparent; font-size:13.5px; color:var(--ink-3)}
 .err{background:var(--issue-soft); border:1.5px solid var(--issue-line); color:var(--issue); border-radius:var(--r); padding:10px 12px; font-size:14.5px; font-weight:600; margin:14px 0 0}
 
+/* An odometer that does not follow on from the last one. A question rather than
+   an error, so it reads amber and offers a way forward instead of just stopping. */
+.confirm{background:var(--flag-soft); border:1.5px solid var(--flag-line); border-radius:var(--r); padding:14px; margin-top:18px}
+.confirm b{display:block; color:var(--flag); font-size:14.5px; margin-bottom:6px}
+.confirm p{margin:0 0 8px; font-size:14px; line-height:1.45; color:var(--ink-2)}
+.confirm .num{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap}
+.confirm .primary{margin-top:8px}
+.confirm .linkish{margin-top:10px}
+
 /* ── run header ──────────────────────────────────────────────────────────── */
 .runhead{padding:12px 15px 13px; border-bottom:1.5px solid var(--line); background:var(--surface); position:sticky; top:0; z-index:2}
 .runtop{display:flex; align-items:center; justify-content:space-between; gap:10px}

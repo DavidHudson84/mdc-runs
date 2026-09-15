@@ -38,7 +38,7 @@ async function runLookup() {
 
   const logs = await db(
     `vehicle_logs?vehicle_id=eq.${van.id}&service_date=eq.${lookup.date}` +
-    `&select=id,started_at,ended_at,odometer_start,odometer_end,skipped,skip_reason,` +
+    `&select=id,started_at,ended_at,odometer_start,odometer_end,odometer_overridden,odometer_prev,skipped,skip_reason,` +
     `drivers(id,display_name,phone)&order=started_at.asc`);
 
   for (const l of logs) {
@@ -81,6 +81,9 @@ function lookupHTML() {
             l.odometer_end != null ? ' → ' + l.odometer_end.toLocaleString('en-AU') : ''}${
             km != null ? ` &middot; ${km.toLocaleString('en-AU')} km` : ''}.</p>
           ${l.skipped ? `<p><span class="badge warn">check skipped</span>${esc(l.skip_reason || '')}</p>` : ''}
+          ${l.odometer_overridden && l.odometer_prev != null
+            ? `<p><span class="badge warn">odometer overridden</span>The van last read ${
+                l.odometer_prev.toLocaleString('en-AU')} km before this.</p>` : ''}
           ${l.stops && l.stops.length ? `<p style="margin-top:9px"><b>Where they were:</b></p>
             <p>${l.stops.map(s => `${clock(s.marked_at)} ${esc(s.customer_name || s.label)}`).join(' &middot; ')}</p>`
             : '<p>No stops ticked that day.</p>'}

@@ -124,6 +124,27 @@ Watch for `admin_remove_route_stop`: it retires a stop by setting
 empty to `ensure_run_day()` may not be empty in the admin grid — check
 `active_to is null` before concluding a day has no pattern.
 
+## The odometer can be overridden
+
+The pre-start check used to refuse any reading below the last one on file, or
+more than 1500km above it, with no way past — which stranded a driver standing
+at the van looking at the real number. It happens on a van swap, and after any
+earlier reading that went in wrong, because every reading since then is "below
+the last one".
+
+It now asks instead of refusing. The phone shows what they typed next to what
+is on file, and if they say the dash is right the reading is taken, the van's
+odometer moves to it, and the log keeps both numbers
+(`vehicle_logs.odometer_overridden` and `odometer_prev`, migration 0018). An
+override is never silent — it appears on that evening's report under "needs
+someone to do something", with both figures, and on the Vans page.
+
+Underneath: an out-of-range reading comes back as **SQLSTATE P0002** rather
+than P0001, which is how the app tells a question from a real error;
+`p_override => true` on `driver_start_vehicle_log` takes it. The one thing
+still refused outright is a reading outside 0 to 2,000,000 km, which is not a
+van, it is a typo.
+
 `run.html?date=YYYY-MM-DD` opens another day and skips the van gate. Used for a
 late run finishing after midnight, and for checking a day from the office.
 
@@ -145,22 +166,39 @@ Three pieces, and only three:
 - **`scripts/daily-report.mjs`** turns that blob into an email and posts it to
   Resend. Plain Node, no packages, nothing to install. Change the wording of the
   email here.
-- **`.github/workflows/daily-report.yml`** runs it at 09:17 UTC, Monday to
-  Saturday — 7:17pm Melbourne in winter, 8:17pm in summer. Late enough that
-  every run is off the road, so "never finished the run" in the report means
-  the driver really did forget to press Finish.
+- **`.github/workflows/daily-report.yml`** makes **six attempts** across the
+  evening, Monday to Saturday, half an hour apart from 07:52 UTC to 10:22 UTC.
+  Whichever one actually gets a runner sends the report; the rest find the day
+  already done and stop.
 
-**GitHub's scheduler is not punctual, and the report is built to survive it.**
+**GitHub's scheduler is not punctual, and the report is built around that.**
 The first scheduled report was due at 7pm Monday and fired at 1:38am Tuesday —
 six and a half hours late — and reported an empty Tuesday, because it had asked
 for "today" and today had ticked over. Delays like that cannot be prevented;
-GitHub queues scheduled work and the top of the hour is the busiest moment,
-which is why the cron sits at 17 minutes past. What can be fixed is the
-consequence: `serviceDate()` in the script decides which day the report covers
-from the Melbourne clock, and a run before midday is treated as a late report
-for the day before. So a delayed report is still the right day's report. An
-explicit date on the command line always wins over that rule.
-`node scripts/daily-report.test.mjs` checks the rule against eleven fire
+GitHub queues scheduled work and runs it when it has room. Two things fix the
+consequences, and both live in the script:
+
+- **Which day it covers.** `serviceDate()` works it out from the Melbourne
+  clock, and a run before midday is treated as a late report for the day
+  before. So a delayed report is still the right day's report.
+- **Whether this attempt sends.** `tooEarly()` holds off any attempt that lands
+  in the afternoon before 6:50pm Melbourne, so the early attempts only exist as
+  cover for a delayed one. Nothing before midday is ever held off — late beats
+  never. This is also why the clock change needs no attention: the script reads
+  the local time itself.
+
+Six attempts would mean six emails, so **the database hands the right to send
+one day's report to exactly one of them** — `claim_report_send()` and
+`mark_report_sent()`, migration 0019, backed by a `report_sends` row per day.
+An attempt that claims the day and then dies goes stale after ten minutes and
+the next one picks it up, so the failure mode is "try again", not "stay
+silent". All six would have to be delayed together for the report to be late,
+which turns a six-hour miss into a thirty-minute one.
+
+An explicit date always wins over all of it — that is a person asking for that
+day again, so it ignores both the clock and the once-a-day guard.
+
+`node scripts/daily-report.test.mjs` checks both rules against twenty-two fire
 times, the real 1:38am failure and the night the clocks change among them.
 No packages, no runner — it is plain Node, like everything else here.
 

@@ -9,8 +9,8 @@
 // Plain Node, no packages, no build step. The same rule as the rest of the
 // app: nothing here needs installing before it will run.
 //
-//   node scripts/daily-report.mjs              today, Melbourne
-//   node scripts/daily-report.mjs 2026-09-14   a particular day
+//   node scripts/daily-report.mjs              tonight's report
+//   node scripts/daily-report.mjs 2026-09-14   a particular day, re-sent
 //   DRY_RUN=1 node scripts/daily-report.mjs    print it instead of sending
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -31,32 +31,65 @@ const ADMIN_URL    = 'https://davidhudson84.github.io/mdc-runs/admin/daily.html'
 const DRY_RUN      = !!process.env.DRY_RUN;
 const TZ           = 'Australia/Melbourne';
 
-/* ── which day the report covers ─────────────────────────────────────────── */
-// Never "whatever today is when this happens to run". GitHub's scheduler is
-// not punctual -- the first scheduled report was due at 7pm Monday and fired
-// at 1:38am Tuesday, six and a half hours late, by which time "today" had
-// ticked over and it reported an empty Tuesday.
+/* ── the clock ───────────────────────────────────────────────────────────── */
+// Two questions, and they are not the same one. WHICH DAY does this report
+// cover, and SHOULD IT GO OUT at the moment this happens to run.
 //
-// So the report always covers the day whose runs have just finished. Fired in
-// the evening, that is today. Fired in the small hours or the morning, it is a
-// late evening report, so it is yesterday. Midday is the cutoff: past that,
-// a delay is so long that the current day's runs are the more useful answer.
+// Both exist because GitHub's scheduler is not punctual. It queues scheduled
+// workflows and runs them when it has room; the first scheduled report was due
+// at 7pm Monday and fired at 1:38am Tuesday, six and a half hours late. That
+// cannot be prevented, so the workflow now tries six times across the evening
+// and these two rules sort out what each attempt should do.
 //
-// An explicit date on the command line always wins -- that is how the office
-// re-sends a particular day.
+// The report is meant to be in David's hands at 7pm, in time to sort out the
+// next day, which is the whole reason for both rules.
 
-export function serviceDate(now = new Date()) {
+const TARGET = 'about 7pm';
+const EARLIEST = 18 * 60 + 50;         // 6:50pm Melbourne, in minutes past midnight
+
+function melbourne(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', hourCycle: 'h23'
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   }).formatToParts(now);
   const at = k => parts.find(p => p.type === k).value;
-  const day = new Date(`${at('year')}-${at('month')}-${at('day')}T00:00:00Z`);
-  if (Number(at('hour')) < 12) day.setUTCDate(day.getUTCDate() - 1);
+  return {
+    date:   `${at('year')}-${at('month')}-${at('day')}`,
+    hour:   Number(at('hour')),
+    minute: Number(at('minute'))
+  };
+}
+
+// WHICH DAY. The day whose runs have just finished. Fired in the evening, that
+// is today. Fired in the small hours or the morning, it is a late report for
+// yesterday. Midday is the cutoff: past that, the delay is so long that the
+// current day's runs are the more useful answer.
+export function serviceDate(now = new Date()) {
+  const m = melbourne(now);
+  const day = new Date(`${m.date}T00:00:00Z`);
+  if (m.hour < 12) day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
 }
 
-const date         = process.argv[2] || serviceDate();
+// SHOULD IT GO OUT. The early attempts exist so that a delayed one is not the
+// only one; an attempt that arrives on time but before the vans are in should
+// wait for the next one. Only the afternoon can be too early -- anything
+// before midday is a delayed attempt at last night's report, and late beats
+// never.
+export function tooEarly(now = new Date()) {
+  const m = melbourne(now);
+  const mins = m.hour * 60 + m.minute;
+  return mins >= 12 * 60 && mins < EARLIEST;
+}
+
+// A date typed by a person: the office asking for that day again. It ignores
+// the clock and the once-a-day guard, because they meant it.
+const explicitDate = (process.argv[2] || process.env.REPORT_DATE || '').trim() || null;
+if (explicitDate && !/^\d{4}-\d{2}-\d{2}$/.test(explicitDate)) {
+  throw new Error(`Not a date: ${explicitDate}. Use YYYY-MM-DD.`);
+}
+
+const date = explicitDate || serviceDate();
 
 const REASONS = {
   nobody_home: 'Nobody home',
@@ -69,21 +102,23 @@ const esc = s => String(s ?? '').replace(/[<>&"]/g, c =>
 
 /* ── the day ─────────────────────────────────────────────────────────────── */
 
-async function fetchReport() {
+async function rpc(fn, args) {
   if (!SERVICE_KEY) throw new Error('SUPABASE_SERVICE_KEY is not set');
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/daily_report`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: {
       apikey: SERVICE_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ p_business_slug: SLUG, p_date: date })
+    body: JSON.stringify(args)
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`daily_report failed (${res.status}): ${text}`);
-  return JSON.parse(text);
+  if (!res.ok) throw new Error(`${fn} failed (${res.status}): ${text}`);
+  return text ? JSON.parse(text) : null;
 }
+
+const fetchReport = () => rpc('daily_report', { p_business_slug: SLUG, p_date: date });
 
 /* ── the email ───────────────────────────────────────────────────────────── */
 // Tables and inline styles throughout. Outlook ignores most of a stylesheet
@@ -230,6 +265,9 @@ function buildHtml(r) {
           v.skipped ? 'Check skipped' + (v.skip_reason ? ' — ' + esc(v.skip_reason) : '')
           : v.failed ? 'Fault reported — ' + esc(v.faults || '')
           : 'Check done'}${v.odometer != null ? ' · ' + Number(v.odometer).toLocaleString('en-AU') + ' km' : ''}</div>
+        ${v.odometer_overridden && v.odometer_prev != null
+          ? `<div style="font-size:13px;color:${AMBER};">Driver confirmed that reading past the check &mdash;
+             last one was ${Number(v.odometer_prev).toLocaleString('en-AU')} km</div>` : ''}
       </td></tr>`).join(''))));
   }
 
@@ -291,11 +329,31 @@ async function send(to, subject, html, text) {
 }
 
 /* ── go ──────────────────────────────────────────────────────────────────── */
-// Only when run directly, so the date rule above can be imported and checked
-// on its own. Which day the report covers is the one thing here worth being
-// certain about -- getting it wrong sends an empty report for the wrong day.
+// Only when run directly, so the two clock rules above can be imported and
+// checked on their own. Which day the report covers is the one thing here
+// worth being certain about -- getting it wrong sends an empty report for the
+// wrong day.
 
 async function main() {
+  // Six attempts an evening, and the office wants one email. The clock rules
+  // out the attempts that are too early; the database hands out the right to
+  // send to exactly one of the rest.
+  if (!explicitDate && !DRY_RUN) {
+    const m = melbourne();
+    if (tooEarly()) {
+      console.log(`${String(m.hour).padStart(2,'0')}:${String(m.minute).padStart(2,'0')} ` +
+                  `Melbourne is earlier than the vans get in. Waiting for the next attempt ` +
+                  `(${TARGET}).`);
+      return;
+    }
+    const claim = await rpc('claim_report_send', { p_business_slug: SLUG, p_date: date });
+    if (!claim.claimed) {
+      console.log(`${date} is already handled -- ${claim.reason}` +
+                  `${claim.sent_at ? ' at ' + claim.sent_at : ''}. Nothing sent.`);
+      return;
+    }
+  }
+
   const r = await fetchReport();
   const t = r.totals || {};
 
@@ -314,10 +372,19 @@ async function main() {
     console.log(`\n[dry run] would go to: ${to.join(', ') || '(nobody)'}`);
     if (process.env.DRY_RUN_HTML) console.log('\n' + html);
   } else if (!to.length) {
+    // The claim is deliberately left unstamped: it goes stale in ten minutes
+    // and a later attempt tries again, so adding somebody at 7:30pm still
+    // gets them tonight's report.
     console.log('Nobody on the recipient list — nothing sent.');
   } else {
     const out = await send(to, subject, html, text);
     console.log(`Sent to ${to.join(', ')} (${out.id})`);
+    if (!explicitDate) {
+      await rpc('mark_report_sent', {
+        p_business_slug: SLUG, p_date: date, p_kind: 'daily',
+        p_provider_id: out.id, p_recipients: to
+      });
+    }
   }
 }
 

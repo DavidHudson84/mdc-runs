@@ -32,7 +32,9 @@ let error = '';
 let sheet = null;         // { stopId, name, reason, note }
 let finishAsk = false;    // last stop just ticked -- nudge them to close the run
 let inbox = [], replyText = '';
-let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{}, showAll:false };
+// confirmOdo is set when the database says the reading does not follow on from
+// the last one (SQLSTATE P0002) and the driver has not yet said it is right.
+let vanForm = { vehicleId:null, odometer:'', answers:{}, notes:{}, showAll:false, confirmOdo:null };
 
 // ?date=YYYY-MM-DD — for a driver finishing a late run after midnight, and for
 // the office checking a day without impersonating anyone.
@@ -115,6 +117,17 @@ function renderVan() {
                placeholder="e.g. 84210" value="${esc(vanForm.odometer)}">
       </div>
 
+      ${vanForm.confirmOdo ? `<div class="confirm">
+        <b>That does not follow on from the last reading.</b>
+        <p>You typed <span class="num">${vanForm.confirmOdo.entered.toLocaleString('en-AU')} km</span>.
+           ${esc(vanForm.confirmOdo.van)} last read
+           <span class="num">${vanForm.confirmOdo.was.toLocaleString('en-AU')} km</span>.</p>
+        <p>If that is what the dash says, take it &mdash; a swapped van or an earlier
+           typo both look like this. The office sees it on tonight&rsquo;s report either way.</p>
+        <button class="primary" id="odo-yes">Yes, that&rsquo;s what the dash says</button>
+        <button class="linkish" id="odo-fix">No, let me change it</button>
+      </div>` : ''}
+
       ${items.length ? `<div class="field">
         <label>Weekly check &mdash; first run of the week</label>
         <div class="checks">
@@ -138,18 +151,22 @@ function renderVan() {
         Weekly check already done &mdash; just the van and the odometer today.</p>`}
 
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
-      <button class="primary" id="start">Start the run</button>
+      ${vanForm.confirmOdo ? '' : '<button class="primary" id="start">Start the run</button>'}
       ${items.length ? `<button class="linkish" id="skip">Can&rsquo;t do the check right now</button>` : ''}
       <p class="foot">v${BUILD}</p>
     </div>`;
 
   app.querySelectorAll('.van-btn').forEach(b => b.addEventListener('click', () => {
-    vanForm.vehicleId = b.dataset.id; error = ''; render();
+    vanForm.vehicleId = b.dataset.id; error = ''; vanForm.confirmOdo = null; render();
   }));
   const ov = app.querySelector('#othervan');
   if (ov) ov.addEventListener('click', () => { vanForm.showAll = true; render(); });
   const odo = app.querySelector('#odo');
-  if (odo) odo.addEventListener('input', e => { vanForm.odometer = e.target.value.replace(/[^0-9]/g, ''); });
+  if (odo) odo.addEventListener('input', e => {
+    vanForm.odometer = e.target.value.replace(/[^0-9]/g, '');
+    // A question asked about one number does not carry over to the next one.
+    if (vanForm.confirmOdo) { vanForm.confirmOdo = null; render(); app.querySelector('#odo').focus(); }
+  });
   app.querySelectorAll('.yn button').forEach(b => b.addEventListener('click', () => {
     const box = b.closest('.check');
     const okIsYes = box.dataset.okyes === 'true';
@@ -161,7 +178,14 @@ function renderVan() {
   app.querySelectorAll('.check .note').forEach(inp => inp.addEventListener('input', e => {
     vanForm.notes[e.target.closest('.check').dataset.item] = e.target.value;
   }));
-  app.querySelector('#start').addEventListener('click', startRun);
+  const st = app.querySelector('#start');
+  if (st) st.addEventListener('click', () => startRun());
+  const yes = app.querySelector('#odo-yes');
+  if (yes) yes.addEventListener('click', () => startRun(true));
+  const fix = app.querySelector('#odo-fix');
+  if (fix) fix.addEventListener('click', () => {
+    vanForm.confirmOdo = null; vanForm.odometer = ''; render(); app.querySelector('#odo').focus();
+  });
   const sk = app.querySelector('#skip');
   if (sk) sk.addEventListener('click', skipCheck);
 }
@@ -172,18 +196,34 @@ function buildAnswers() {
     .map(i => ({ item_id:i.id, label:i.label, ok:vanForm.answers[i.id], note:vanForm.notes[i.id] || null }));
 }
 
-async function startRun() {
+// override = the driver has already been asked about this reading and said it
+// is right. The database refuses an odometer that does not follow on from the
+// last one with SQLSTATE P0002, which is a question, not a dead end -- anything
+// else is a real error and reads as one.
+async function startRun(override = false) {
   if (!vanForm.vehicleId) { error = 'Pick a van first.'; return render(); }
   error = '';
   try {
     await api.startVan({
       vehicleId: vanForm.vehicleId,
       odometer: vanForm.odometer ? Number(vanForm.odometer) : null,
-      answers: buildAnswers()
+      answers: buildAnswers(),
+      override
     });
+    vanForm.confirmOdo = null;
     await load();
   } catch (err) {
-    error = err.message; render();
+    if (err instanceof ApiError && err.code === 'P0002') {
+      const van = (vanOpts.vehicles || []).find(v => v.id === vanForm.vehicleId);
+      vanForm.confirmOdo = {
+        entered: Number(vanForm.odometer),
+        was: van && van.odometer != null ? van.odometer : 0,
+        van: van ? van.label : 'This van'
+      };
+    } else {
+      error = err.message;
+    }
+    render();
   }
 }
 
