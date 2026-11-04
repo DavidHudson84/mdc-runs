@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#114C9C">
+<title>Counts — Driver Runs office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="../assets/admin.css">
+<style>
+  .modes{display:flex; gap:6px}
+  .modes button{font:600 13px "Archivo",sans-serif; padding:8px 14px; border-radius:var(--r);
+    border:1.5px solid var(--line-2); background:var(--surface); color:var(--ink-2); cursor:pointer}
+  .modes button[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+  .daynav{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .daynav .arrow{min-width:40px}
+  .state{padding:12px 20px; border-bottom:1.5px solid var(--line); font-size:14px}
+  .state.open{background:var(--surface-2); color:var(--ink-2)}
+  .state.done{background:var(--done-soft); color:var(--done)}
+  .state.locked{background:var(--accent-soft); color:var(--accent)}
+  .state button{margin-left:10px}
+  .acct{border-bottom:1.5px solid var(--line)}
+  .acct:last-child{border-bottom:0}
+  .acct h3{margin:0; padding:14px 20px 4px; font:700 16px "Archivo",sans-serif; color:var(--ink)}
+  .acct .note{padding:0 20px 6px; color:var(--ink-3); font-size:13px}
+  .rows{padding:4px 20px 14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px 18px}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:6px 0; border-bottom:1px dashed var(--line)}
+  .row label{font-size:15px; color:var(--ink)}
+  .row .box{display:flex; align-items:center; gap:6px}
+  .row input{width:84px; font:600 18px "Barlow",sans-serif; text-align:right; padding:8px 10px;
+    border:1.5px solid var(--line-2); border-radius:var(--r); background:var(--surface); color:var(--ink)}
+  .row input:focus{outline:2px solid var(--accent); outline-offset:1px}
+  .row input:disabled{background:var(--surface-2); color:var(--ink-3)}
+  .tick{width:18px; font-size:14px; color:var(--done)}
+  .tick.bad{color:var(--issue)}
+  .grid td.num, .grid th.num{text-align:right; min-width:42px}
+  .grid td.tot{font-weight:700}
+  .grid tr.acc td{background:var(--surface-2); font:700 14px "Archivo",sans-serif; color:var(--ink)}
+  .grid td.zero{color:var(--ink-3)}
+  .weeks{list-style:none; margin:0; padding:0}
+  .weeks li{display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:10px 20px; border-bottom:1.5px solid var(--line); cursor:pointer}
+  .weeks li:last-child{border-bottom:0}
+  .weeks li[aria-current="true"]{background:var(--accent-soft)}
+  .help{padding:12px 20px; color:var(--ink-3); font-size:13px; line-height:1.5}
+  @media (max-width:520px){ .rows{grid-template-columns:1fr} .row input{width:96px} }
+</style>
+</head>
+<body class="admin">
+<div id="root"></div>
+
+<script type="module">
+import { db, rpcAdmin, esc, longDate, todayISO, nav, wireNav, mountLogin, auth, access }
+  from '../assets/admin.js';
+
+const root = document.getElementById('root');
+const SLUG = 'mdc';
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const FIRST_WEEK = '2026-10-12';
+
+// The day's count goes in item by item; on Monday someone presses "Week
+// finished" and accounts take it from there. This screen knows nothing about
+// prices or invoices -- it is a tally sheet.
+
+const qs = new URLSearchParams(location.search);
+let mode = qs.get('view') === 'week' ? 'week' : 'day';
+let date = qs.get('date') || todayISO();
+let accounts = [], entries = new Map(), weeks = new Map(), recent = [];
+let err = '', busy = true;
+const saving = new Map();   // key -> 'ok' | 'err' | 'busy'
+
+/* ── dates, always as plain YYYY-MM-DD strings ───────────────────────────── */
+
+const addDays = (d, n) => {
+  const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+};
+const monday = d => {
+  const dow = (new Date(d + 'T12:00:00Z').getUTCDay() + 6) % 7;   // Mon = 0
+  return addDays(d, -dow);
+};
+const short = d => new Date(d + 'T00:00:00')
+  .toLocaleDateString('en-AU', { day:'numeric', month:'short' });
+const key = (itemId, d) => `${itemId}|${d}`;
+
+/* ── data ────────────────────────────────────────────────────────────────── */
+
+async function loadSheet() {
+  accounts = await db('count_accounts?is_active=eq.true&order=seq' +
+    '&select=id,slug,name,note,cadence,count_items(id,slug,label,seq,is_active)');
+  for (const a of accounts)
+    a.items = (a.count_items || []).filter(i => i.is_active).sort((x, y) => x.seq - y.seq);
+}
+
+async function loadWeek() {
+  const mon = monday(date), sun = addDays(mon, 6);
+  const today = todayISO();
+  // Eight weeks back, but never before the sheet existed: the counts start
+  // with the first week that went uninvoiced, 12 Oct 2026.
+  const back = addDays(monday(today), -7 * 7);
+  const from = back > FIRST_WEEK ? back : FIRST_WEEK;
+  const [rows, wk] = await Promise.all([
+    db(`count_entries?count_date=gte.${mon}&count_date=lte.${sun}&select=item_id,count_date,qty`),
+    db(`count_weeks?week_start=gte.${from < mon ? from : mon}&select=week_start,finished_at,finished_name,collected_at`)
+  ]);
+  entries = new Map(rows.map(r => [key(r.item_id, r.count_date), r.qty]));
+  weeks = new Map(wk.map(w => [w.week_start, w]));
+  recent = [];
+  for (let m = monday(today); m >= from; m = addDays(m, -7)) recent.push(m);
+}
+
+async function load() {
+  busy = true; err = ''; render();
+  try { if (!accounts.length) await loadSheet(); await loadWeek(); }
+  catch (e) { err = e.message; }
+  busy = false; render();
+}
+
+function weekState(mon) {
+  const w = weeks.get(mon);
+  if (w && w.collected_at) return { kind:'locked', w };
+  if (w && w.finished_at) return { kind:'done', w };
+  return { kind:'open', w };
+}
+
+/* ── saving one box ──────────────────────────────────────────────────────── */
+
+async function save(input) {
+  const itemId = input.dataset.item, d = input.dataset.date, k = key(itemId, d);
+  const raw = input.value.trim();
+  const qty = raw === '' ? null : Number(raw);
+  if (qty !== null && (!Number.isInteger(qty) || qty < 0)) {
+    saving.set(k, 'err'); paintTick(k); return;
+  }
+  if ((entries.get(k) ?? null) === qty) return;
+  saving.set(k, 'busy'); paintTick(k);
+  try {
+    await rpcAdmin('counts_save', { p_item_id:itemId, p_date:d, p_qty:qty });
+    if (qty === null) entries.delete(k); else entries.set(k, qty);
+    saving.set(k, 'ok');
+  } catch (e) {
+    saving.set(k, 'err'); err = e.message; render(); return;
+  }
+  paintTick(k);
+}
+
+function paintTick(k) {
+  const el = root.querySelector(`[data-tick="${k}"]`);
+  if (!el) return;
+  const s = saving.get(k);
+  el.className = 'tick' + (s === 'err' ? ' bad' : '');
+  el.textContent = s === 'ok' ? '✓' : s === 'err' ? '!' : s === 'busy' ? '…' : '';
+}
+
+/* ── views ───────────────────────────────────────────────────────────────── */
+
+function stateBar(mon) {
+  const s = weekState(mon);
+  const when = iso => new Date(iso).toLocaleString('en-AU',
+    { weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit' });
+  if (s.kind === 'locked') return `<div class="state locked">Week of ${short(mon)} has gone to accounts
+    (${when(s.w.collected_at)}). It can't be changed here any more &mdash; ask accounts to fix the invoice.</div>`;
+  if (s.kind === 'done') return `<div class="state done">Week of ${short(mon)} finished by
+    ${esc(s.w.finished_name || 'someone')} on ${when(s.w.finished_at)}. Accounts pick it up on Monday.
+    <button class="btn" id="reopen">Reopen to fix a number</button></div>`;
+  const ready = todayISO() >= addDays(mon, 4);
+  return `<div class="state open">Week of ${short(mon)} is open.
+    ${ready ? `<button class="btn" id="finish">Week finished &mdash; send to accounts</button>`
+            : 'It can be finished from Friday.'}</div>`;
+}
+
+function dayView() {
+  const mon = monday(date), s = weekState(mon), locked = s.kind !== 'open';
+  const future = date > todayISO();
+  return `${stateBar(mon)}${accounts.map(a => `<div class="acct">
+      <h3>${esc(a.name)}${a.cadence === 'monthly' ? ' <span class="badge">monthly</span>' : ''}</h3>
+      ${a.note ? `<div class="note">${esc(a.note)}</div>` : ''}
+      <div class="rows">${a.items.map(i => {
+        const k = key(i.id, date), v = entries.get(k);
+        return `<div class="row"><label for="i-${i.id}">${esc(i.label)}</label>
+          <span class="box"><input id="i-${i.id}" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+            data-item="${i.id}" data-date="${date}" value="${v ?? ''}" ${locked || future ? 'disabled' : ''}>
+          <span class="tick" data-tick="${k}"></span></span></div>`;
+      }).join('')}</div></div>`).join('')}
+    <div class="help">Type the number that came through today and move to the next box &mdash; it saves
+      itself (&#10003;). Leave a box empty if that item didn't come in. Zero is fine too.</div>`;
+}
+
+function weekView() {
+  const mon = monday(date);
+  const days = DAYS.map((_, n) => addDays(mon, n));
+  const body = accounts.map(a => {
+    const rows = a.items.map(i => {
+      const vals = days.map(d => entries.get(key(i.id, d)));
+      const tot = vals.reduce((s, v) => s + (v || 0), 0);
+      return `<tr><td>${esc(i.label)}</td>${vals.map(v =>
+        `<td class="num ${v ? '' : 'zero'}">${v ?? '·'}</td>`).join('')}
+        <td class="num tot">${tot || '—'}</td></tr>`;
+    }).join('');
+    return `<tr class="acc"><td colspan="9">${esc(a.name)}${
+      a.cadence === 'monthly' ? ' &middot; billed monthly' : ''}</td></tr>${rows}`;
+  }).join('');
+  return `${stateBar(mon)}<div class="tablewrap"><table class="grid">
+      <thead><tr><th>Item</th>${days.map((d, n) =>
+        `<th class="num"><a href="#" data-day="${d}">${DAYS[n]}<br><span class="dim">${short(d)}</span></a></th>`).join('')}
+        <th class="num">Week</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <div class="help">Tap a day to fill it in. A dot means nothing was typed for that day.</div>`;
+}
+
+function weekList() {
+  const mon = monday(date);
+  return `<div class="panel"><header><div><h2>Recent weeks</h2>
+      <span class="when">Anything still open has not been invoiced</span></div></header>
+    <ul class="weeks">${recent.map(m => {
+      const s = weekState(m);
+      const badge = s.kind === 'locked' ? '<span class="badge on">with accounts</span>'
+        : s.kind === 'done' ? '<span class="badge on">finished</span>'
+        : todayISO() >= addDays(m, 7) ? '<span class="badge bad">not finished</span>'
+        : '<span class="badge">this week</span>';
+      return `<li data-week="${m}" aria-current="${m === mon}">
+        <span>Week of ${short(m)} &ndash; ${short(addDays(m, 6))}</span>${badge}</li>`;
+    }).join('')}</ul></div>`;
+}
+
+function render() {
+  const head = `${nav('counts.html')}<div class="wrap">
+    <div class="panel"><header>
+      <div><h2>Counts</h2>
+        <span class="when">${mode === 'day' ? esc(longDate(date)) : 'Week of ' + esc(longDate(monday(date)))}</span></div>
+      <div class="daynav">
+        <div class="modes">
+          <button data-mode="day" aria-pressed="${mode === 'day'}">Day</button>
+          <button data-mode="week" aria-pressed="${mode === 'week'}">Week</button>
+        </div>
+        <button class="btn arrow" id="prev" aria-label="Back">&lsaquo;</button>
+        <input type="date" id="date" value="${date}" max="${todayISO()}">
+        <button class="btn arrow" id="next" aria-label="Forward">&rsaquo;</button>
+        ${date !== todayISO() ? '<button class="btn" id="today">Today</button>' : ''}
+      </div></header>
+      ${err ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}`;
+  if (busy) { root.innerHTML = head + `<div class="empty">Loading&hellip;</div></div></div>`; return wire(); }
+  if (!accounts.length) {
+    root.innerHTML = head + `<div class="empty">No customers on the count sheet yet.</div></div></div>`;
+    return wire();
+  }
+  root.innerHTML = head + (mode === 'day' ? dayView() : weekView()) + `</div>${weekList()}</div>`;
+  for (const k of saving.keys()) paintTick(k);
+  wire();
+}
+
+function go(d) {
+  date = d > todayISO() ? todayISO() : d;
+  history.replaceState(null, '', `counts.html?date=${date}${mode === 'week' ? '&view=week' : ''}`);
+  load();
+}
+
+function wire() {
+  wireNav();
+  const $ = s => root.querySelector(s);
+  root.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode; go(date);
+  }));
+  const step = mode === 'day' ? 1 : 7;
+  $('#prev')?.addEventListener('click', () => go(addDays(date, -step)));
+  $('#next')?.addEventListener('click', () => go(addDays(date, step)));
+  $('#today')?.addEventListener('click', () => go(todayISO()));
+  $('#date')?.addEventListener('change', e => e.target.value && go(e.target.value));
+  root.querySelectorAll('[data-day]').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault(); mode = 'day'; go(a.dataset.day);
+  }));
+  root.querySelectorAll('[data-week]').forEach(li => li.addEventListener('click', () => {
+    go(mode === 'week' ? li.dataset.week : li.dataset.week === monday(todayISO()) ? todayISO() : li.dataset.week);
+  }));
+  root.querySelectorAll('input[data-item]').forEach(inp => {
+    inp.addEventListener('change', () => save(inp));
+    inp.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const all = [...root.querySelectorAll('input[data-item]:not(:disabled)')];
+      const nx = all[all.indexOf(inp) + 1]; (nx || inp).focus(); if (!nx) inp.blur();
+    });
+  });
+  $('#finish')?.addEventListener('click', async () => {
+    const mon = monday(date);
+    if (!confirm(`Finish the week of ${short(mon)}? Accounts will invoice from these numbers. ` +
+                 `You can reopen it until they do.`)) return;
+    try { await rpcAdmin('counts_finish_week', { p_business_slug:SLUG, p_week_start:mon }); }
+    catch (e) { err = e.message; }
+    load();
+  });
+  $('#reopen')?.addEventListener('click', async () => {
+    try { await rpcAdmin('counts_reopen_week', { p_business_slug:SLUG, p_week_start:monday(date) }); }
+    catch (e) { err = e.message; }
+    load();
+  });
+}
+
+async function boot() {
+  if (!auth.token) return mountLogin(root, boot);
+  try { await access(); await load(); }
+  catch (e) {
+    if (/Signed out/.test(e.message)) return mountLogin(root, boot);
+    root.innerHTML = `${nav('counts.html')}<div class="wrap"><div class="panel">
+      <div class="empty">${esc(e.message)}</div></div></div>`;
+    wireNav();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
