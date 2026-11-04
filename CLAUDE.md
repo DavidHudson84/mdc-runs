@@ -275,6 +275,14 @@ goes in this repo. Account and item `slug`s are what the outside reader
 matches on, so never rename one: add a new item and set `is_active = false`
 on the old. Adding a customer or item is an insert, no screen.
 
+**Factory login (0021).** A fourth access level, `factory`, for the shared
+plant tablet: it sees the Counts screen and nothing else. `is_staff()` now
+means owner/admin/staff only, which is what shuts factory out of every other
+table; the counts tables and functions use `can_count()` instead. The tablet
+asks for a first name once and every count is stamped "Factory (Sam)". The
+invite is `factory@hudsongroup.com.au`; that address receives nothing, it only
+has to be typed at sign-up, then confirmed by hand like any other login.
+
 ## Scope — this project only
 
 This repo is standalone. It has nothing to do with DrapesQuotePro, Fergus,

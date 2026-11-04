@@ -78,10 +78,17 @@ let _access = null;
 export async function access(force = false) {
   if (_access && !force) return _access;
   _access = await rpcAdmin('my_access');
+  // The shared factory login only ever sees the Counts screen. The database
+  // shuts it out of everything else anyway; this just stops it landing on an
+  // empty page.
+  if (_access && _access.role === 'factory' && !/\/counts\.html$/.test(location.pathname)) {
+    location.replace('counts.html');
+  }
   return _access;
 }
 
 export function isAdmin() { return !!(_access && _access.is_admin); }
+export function isFactory() { return !!(_access && _access.role === 'factory'); }
 
 // Pages only owner/admin should open. Staff are sent back to Today rather
 // than shown a broken screen.
@@ -124,7 +131,7 @@ export function todayISO() {
 
 export function nav(current) {
   const admin = isAdmin();
-  const items = [
+  const items = isFactory() ? [['counts.html', 'Counts', false]] : [
     ['index.html', 'Today', false],
     ['runs.html', 'Runs', false],
     ['calendar.html', 'Calendar', false],

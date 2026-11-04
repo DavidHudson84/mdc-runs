@@ -54,7 +54,7 @@
 <div id="root"></div>
 
 <script type="module">
-import { db, rpcAdmin, esc, longDate, todayISO, nav, wireNav, mountLogin, auth, access }
+import { db, rpcAdmin, esc, longDate, todayISO, nav, wireNav, mountLogin, auth, access, isFactory }
   from '../assets/admin.js';
 
 const root = document.getElementById('root');
@@ -72,6 +72,16 @@ let date = qs.get('date') || todayISO();
 let accounts = [], entries = new Map(), weeks = new Map(), recent = [];
 let err = '', busy = true;
 const saving = new Map();   // key -> 'ok' | 'err' | 'busy'
+
+// The factory login is shared by whoever is on the tablet, so it asks for a
+// first name and stamps every number with it. Kept on the device only.
+const WHO_KEY = 'mdc.counts.who';
+let who = '', askWho = false;
+try { who = localStorage.getItem(WHO_KEY) || ''; } catch { /* private mode */ }
+function setWho(name) {
+  who = name.trim().slice(0, 40);
+  try { localStorage.setItem(WHO_KEY, who); } catch { /* nothing to do */ }
+}
 
 /* ── dates, always as plain YYYY-MM-DD strings ───────────────────────────── */
 
@@ -139,7 +149,7 @@ async function save(input) {
   if ((entries.get(k) ?? null) === qty) return;
   saving.set(k, 'busy'); paintTick(k);
   try {
-    await rpcAdmin('counts_save', { p_item_id:itemId, p_date:d, p_qty:qty });
+    await rpcAdmin('counts_save', { p_item_id:itemId, p_date:d, p_qty:qty, p_by:who || null });
     if (qty === null) entries.delete(k); else entries.set(k, qty);
     saving.set(k, 'ok');
   } catch (e) {
@@ -241,9 +251,19 @@ function render() {
         <input type="date" id="date" value="${date}" max="${todayISO()}">
         <button class="btn arrow" id="next" aria-label="Forward">&rsaquo;</button>
         ${date !== todayISO() ? '<button class="btn" id="today">Today</button>' : ''}
+        ${isFactory() && who && !askWho ? `<button class="linkish" id="whochange">Counting as ${esc(who)} &middot; change</button>` : ''}
       </div></header>
       ${err ? `<p class="err" style="margin:14px 20px">${esc(err)}</p>` : ''}`;
   if (busy) { root.innerHTML = head + `<div class="empty">Loading&hellip;</div></div></div>`; return wire(); }
+  if (isFactory() && (!who || askWho)) {
+    root.innerHTML = head + `<div class="lookup" style="padding:20px">
+      <label for="who">Who's counting? Your first name</label>
+      <input id="who" autocomplete="given-name" value="${esc(who)}" style="max-width:260px">
+      <button class="btn" id="whogo" style="margin-top:12px">Start counting</button>
+      <div class="help" style="padding:12px 0 0">Every number you enter is saved with this name.</div>
+    </div></div></div>`;
+    return wire();
+  }
   if (!accounts.length) {
     root.innerHTML = head + `<div class="empty">No customers on the count sheet yet.</div></div></div>`;
     return wire();
@@ -262,6 +282,15 @@ function go(d) {
 function wire() {
   wireNav();
   const $ = s => root.querySelector(s);
+  const start = () => {
+    const v = $('#who').value.trim();
+    if (!v) return $('#who').focus();
+    setWho(v); askWho = false; render();
+  };
+  $('#whogo')?.addEventListener('click', start);
+  $('#who')?.addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+  if ($('#who')) $('#who').focus();
+  $('#whochange')?.addEventListener('click', () => { askWho = true; render(); });
   root.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
     mode = b.dataset.mode; go(date);
   }));
@@ -289,7 +318,7 @@ function wire() {
     const mon = monday(date);
     if (!confirm(`Finish the week of ${short(mon)}? Accounts will invoice from these numbers. ` +
                  `You can reopen it until they do.`)) return;
-    try { await rpcAdmin('counts_finish_week', { p_business_slug:SLUG, p_week_start:mon }); }
+    try { await rpcAdmin('counts_finish_week', { p_business_slug:SLUG, p_week_start:mon, p_by:who || null }); }
     catch (e) { err = e.message; }
     load();
   });
