@@ -60,7 +60,7 @@ import { db, rpcAdmin, esc, longDate, todayISO, nav, wireNav, mountLogin, auth, 
 const root = document.getElementById('root');
 const SLUG = 'mdc';
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const FIRST_WEEK = '2026-10-12';
+const FIRST_WEEK = '2026-10-05';
 
 // The day's count goes in item by item; on Monday someone presses "Week
 // finished" and accounts take it from there. This screen knows nothing about
@@ -100,7 +100,7 @@ async function loadWeek() {
   const mon = monday(date), sun = addDays(mon, 6);
   const today = todayISO();
   // Eight weeks back, but never before the sheet existed: the counts start
-  // with the first week that went uninvoiced, 12 Oct 2026.
+  // with the first week that went uninvoiced, 5 Oct 2026.
   const back = addDays(monday(today), -7 * 7);
   const from = back > FIRST_WEEK ? back : FIRST_WEEK;
   const [rows, wk] = await Promise.all([
