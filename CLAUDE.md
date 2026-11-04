@@ -257,6 +257,24 @@ update public.report_recipients set is_active = false
 Set `is_active = false` rather than deleting, so it stays obvious later that
 somebody used to be on the list.
 
+## Counts (added 4 Nov 2026)
+
+`/admin/counts.html`, open to staff as well as admins. A tally sheet for the
+commercial customers billed by the piece (aprons, tablecloths, uniforms):
+staff type each day's count per item, and from Friday press **Week finished**,
+which locks the week. Pacific Meats is on the same sheet but billed monthly.
+Migration 0020 has the tables (`count_accounts`, `count_items`,
+`count_entries`, `count_weeks`) and the customer and item list.
+
+The app holds **no prices and knows nothing about invoices**. Invoicing
+happens outside this repo, which reads finished weeks through
+`counts_export(key, from, to)` and stamps them with `counts_mark_collected`.
+After that a week cannot be reopened here. The key is checked against
+`count_export_keys`, which stores only `sha256(key)`; the plain key never
+goes in this repo. Account and item `slug`s are what the outside reader
+matches on, so never rename one: add a new item and set `is_active = false`
+on the old. Adding a customer or item is an insert, no screen.
+
 ## Scope — this project only
 
 This repo is standalone. It has nothing to do with DrapesQuotePro, Fergus,
